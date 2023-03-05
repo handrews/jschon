@@ -12,6 +12,7 @@ Features:
 * Cached properties for accessing document and resource root schemas from subschemas
 * JSON.instantiate_{sequence|mapping}() functions allow more
   fine-grained control of JSON subclass document structure
+* ``"$schema"`` can change value in subschemas that have an ``"$id"``
 
 
 v0.11.0 (2023-06-03)
