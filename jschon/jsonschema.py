@@ -173,7 +173,10 @@ class JSONSchema(JSONResource):
 
     def validate(self) -> Result:
         """Validate the schema against its metaschema."""
-        return self.metaschema.evaluate(self)
+        return self.metaschema.evaluate(
+            self,
+            Result(self.metaschema, self, validating_with=self.metaschema),
+        )
 
     def instantiate_mapping(
         self,
@@ -198,19 +201,36 @@ class JSONSchema(JSONResource):
         :param result: the current result node; given by keywords
             when invoking this method recursively
         """
+        schema = self
         if result is None:
             result = Result(self, instance)
 
-        if self.data is True:
+        validating_with = result.validating_with
+        if (
+            validating_with is not None and
+            isinstance(instance, JSONSchema) and
+            '$id' in instance.keywords and
+            '$schema' in instance.keywords and
+            validating_with != instance.metaschema
+        ):
+            schema = instance.metaschema
+            validating_with = instance.metaschema
+
+        if schema.data is True:
             pass
 
-        elif self.data is False:
+        elif schema.data is False:
             result.fail("The instance is disallowed by a boolean false schema")
 
         else:
-            for key, keyword in self.keywords.items():
+            for key, keyword in schema.keywords.items():
                 if not keyword.static and instance.type in keyword.instance_types:
-                    with result(instance, key, self) as subresult:
+                    with result(
+                        instance,
+                        key,
+                        schema,
+                        validating_with=validating_with
+                    ) as subresult:
                         keyword.evaluate(instance, subresult)
 
             if any(
@@ -339,6 +359,7 @@ class Result:
             schema: JSONSchema,
             instance: JSON,
             *,
+            validating_with = None,
             parent: Result = None,
             key: str = None,
     ) -> None:
@@ -353,6 +374,9 @@ class Result:
 
         self.instance: JSON = instance
         """The instance under evaluation."""
+
+        self.validating_with: Optional[Metaschema] = validating_with
+        """The metaschema being used if this is a :meth:`JSONSchema.validate` process."""
 
         self.parent: Optional[Result] = parent
         """The parent result node."""
@@ -390,6 +414,7 @@ class Result:
             key: str,
             schema: JSONSchema = None,
             *,
+            validating_with: Metaschema = None,
             cls: Type[Result] = None,
     ) -> ContextManager[Result]:
         """Yield a subresult for the evaluation of `instance`.
@@ -402,11 +427,15 @@ class Result:
         if schema is None:
             schema = self.schema
 
+        if validating_with is None:
+            validating_with = self.validating_with
+
         self.children[key, instance.path] = (child := (cls or self.__class__)(
             schema,
             instance,
             parent=self,
             key=key,
+            validating_with=validating_with,
         ))
 
         try:
