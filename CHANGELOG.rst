@@ -12,7 +12,8 @@ Features:
 * Relative JSON Pointer ``+``/``-`` array index adjustments
 * Unknown keywords are collected as annotations
 * Support mutually referencing embedded subschema resources with the
-  ``resolve_references`` constructor parameter and method for ``JSONSchema``.
+  ``resolve_references`` constructor parameters and methods on
+  ``JSONSchema``, ``Catalog``, and ``create_catalog``.
 
 Experimental:
 
