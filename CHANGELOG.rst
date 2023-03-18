@@ -11,6 +11,8 @@ Features:
 * JSON ``null``, ``true``, ``false`` literals
 * Relative JSON Pointer ``+``/``-`` array index adjustments
 * Unknown keywords are collected as annotations
+* Support mutually referencing embedded subschema resources with the
+  ``resolve_references`` constructor parameter and method for ``JSONSchema``.
 
 Experimental:
 
