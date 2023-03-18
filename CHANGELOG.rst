@@ -13,6 +13,8 @@ Features:
 * JSON.instantiate_{sequence|mapping}() functions allow more
   fine-grained control of JSON subclass document structure
 * ``"$schema"`` can change value in subschemas that have an ``"$id"``
+* Support mutually referencing embedded subschema resources with the
+  ``resolve_references`` constructor parameter and method for ``JSONSchema``.
 
 
 v0.11.0 (2023-06-03)

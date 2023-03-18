@@ -35,6 +35,7 @@ class JSONSchema(JSONFormat):
             metaschema_uri: URI = None,
             parent: JSON = None,
             key: str = None,
+            resolve_references: bool = True,
     ):
         """Initialize a :class:`JSONSchema` instance from the given
         schema-compatible `value`.
@@ -50,6 +51,13 @@ class JSONSchema(JSONFormat):
             creating a subschema
         :param key: the index of the schema within its parent; used internally
             when creating a subschema
+        :param resolve_references: if ``True`` (the default), then for document
+            root schema, walk the constructed subschemas and resolve all
+            references; set to ``False`` when a schema with a temporarily
+            unresolvable reference needs to be instantiated — references MUST
+            be resolved prior to evaluation by calling by calling :meth:`resolve_references`
+            on each unresolved schema once all reference target schemas are
+            in the relevant :class:`~jschon.catalog.Catalog`'s schema cache
         """
         from jschon.vocabulary import Metaschema
         self._metadocument_cls = Metaschema
@@ -89,6 +97,7 @@ class JSONSchema(JSONFormat):
         if isinstance(value, bool):
             self.type = "boolean"
             self.data = value
+            self.references_resolved = True
 
         elif isinstance(value, Mapping):
             self.type = "object"
@@ -119,8 +128,11 @@ class JSONSchema(JSONFormat):
                 self.keywords[key] = kw
                 self.data[key] = kw.json
 
-            if self.parent is None:
+            if self.parent is None and resolve_references:
                 self.resolve_references()
+
+        else:
+            raise TypeError(f"{value=} is not JSONSchema-compatible")
 
     def _bootstrap(self, value: Mapping[str, JSONCompatible]) -> None:
         from jschon.vocabulary.core import SchemaKeyword, VocabularyKeyword
@@ -148,6 +160,36 @@ class JSONSchema(JSONFormat):
             self.keywords["$id"] = id_kw
             self.data["$id"] = id_kw.json
 
+    def resolve_references(self) -> None:
+        """
+        Walk the entire (sub)schema tree and resolve all references.
+
+        By default, this is done during construction, but can be deferred to handle
+        complex mutual reference cases.  Calling :meth:`evaluate` without
+        first resolving rereferences will result in an :class:`JSONSchemaError`.
+
+        :raise CatalogError: if a reference target cannot be resolved
+        :raise JSONSchemaError: if a schema target schema contains an error
+        """
+        if self.references_resolved == True:
+            return
+
+        for kw in self.keywords.values():
+            if hasattr(kw, 'resolve'):
+                kw.resolve()
+            elif isinstance(kw.json, JSONSchema):
+                kw.json.resolve_references()
+            elif kw.json.type == "array":
+                for item in kw.json:
+                    if isinstance(item, JSONSchema):
+                        item.resolve_references()
+            elif kw.json.type == "object":
+                for item in kw.json.values():
+                    if isinstance(item, JSONSchema):
+                        item.resolve_references()
+
+        self.references_resolved = True
+
     @staticmethod
     def _resolve_dependencies(kwclasses: Dict[str, KeywordClass]) -> Iterator[KeywordClass]:
         dependencies = {
@@ -166,21 +208,6 @@ class JSONSchema(JSONFormat):
                             pass
                     yield kwclass
                     break
-
-    def resolve_references(self) -> None:
-        for kw in self.keywords.values():
-            if hasattr(kw, 'resolve'):
-                kw.resolve()
-            elif isinstance(kw.json, JSONSchema):
-                kw.json.resolve_references()
-            elif kw.json.type == "array":
-                for item in kw.json:
-                    if isinstance(item, JSONSchema):
-                        item.resolve_references()
-            elif kw.json.type == "object":
-                for item in kw.json.values():
-                    if isinstance(item, JSONSchema):
-                        item.resolve_references()
 
     def initial_validation_result(self, instance):
         return Result(self, instance, validating_with=self)
