@@ -56,8 +56,8 @@ class JSONSchema(JSONFormat):
             references; set to ``False`` when a schema with a temporarily
             unresolvable reference needs to be instantiated — references MUST
             be resolved prior to evaluation by calling by calling :meth:`resolve_references`
-            on each unresolved schema once all reference target schemas are
-            in the relevant :class:`~jschon.catalog.Catalog`'s schema cache
+            on each unresolved schema, or :meth:`~jschon.catalog.Catalog.resolve_references`
+            on the relevant catalog.
         """
         from jschon.vocabulary import Metaschema
         self._metadocument_cls = Metaschema
