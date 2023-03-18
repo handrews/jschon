@@ -64,8 +64,6 @@ def test_deferred_ref_resolution():
 
     assert bundle1.references_resolved is False
     assert bundle2.references_resolved is False
-    with pytest.raises(AttributeError):
-        bundle1['$defs']['a'].evaluate(JSON([]))
 
     ref1 = bundle1['$defs']['a'].keywords['$ref']
     ref2 = bundle2['$defs']['a'].keywords['$ref']
@@ -74,8 +72,6 @@ def test_deferred_ref_resolution():
 
     for kwd in (ref1, ref2, dynRef, recRef):
         assert kwd.refschema is None
-        with pytest.raises(AttributeError):
-            kwd.evaluate(kwd.parentschema, JSON({}))
 
     bundle1.resolve_references()
 
@@ -86,10 +82,6 @@ def test_deferred_ref_resolution():
     assert bundle2.references_resolved is False
     for kwd in (ref2, recRef):
         assert kwd.refschema is None
-        with pytest.raises(AttributeError):
-            kwd.evaluate(kwd.parentschema, JSON({}))
-    with pytest.raises(AttributeError):
-        bundle1['$defs']['a'].evaluate(JSON([]))
 
     bundle2.resolve_references()
 

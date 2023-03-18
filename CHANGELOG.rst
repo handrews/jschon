@@ -14,6 +14,9 @@ Features:
 * Support mutually referencing embedded subschema resources with the
   ``resolve_references`` constructor parameters and methods on
   ``JSONSchema``, ``Catalog``, and ``create_catalog``.
+* Automatically resolve references in all schemas in the cache containing
+  that schema on the first call to ``JSONSchema.evaluate()``; this only
+  affects schemas constructed with deferred reference resolution.
 
 Experimental:
 

@@ -209,6 +209,9 @@ class JSONSchema(JSON):
         :param result: the current result node; given by keywords
             when invoking this method recursively
         """
+        if not self.references_resolved:
+            self.catalog.resolve_references(cacheid=self.cacheid)
+
         if result is None:
             result = Result(self, instance)
 

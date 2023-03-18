@@ -191,20 +191,31 @@ def bundle(deferred_catalog):
     return deferred_catalog, bundle1, bundle2, control
 
 
+def assert_resolved_catalog(deferred_catalog, bundle1, bundle2, control):
+    assert bundle1.references_resolved is True
+    assert bundle2.references_resolved is True
+    assert control.references_resolved is False
+
+    with pytest.raises(CatalogError, match=control['$ref'].value):
+        deferred_catalog.resolve_references()
+
+
 def test_deferred_ref_resolution(bundle):
     deferred_catalog, bundle1, bundle2, control = bundle
+
     assert bundle1.references_resolved is False
     assert bundle2.references_resolved is False
     assert control.references_resolved is False
 
     deferred_catalog.resolve_references(cacheid='test')
+    assert_resolved_catalog(*bundle)
 
-    assert bundle1.references_resolved is True
-    assert bundle2.references_resolved is True
-    assert control.references_resolved is False
 
-    with pytest.raises(CatalogError, match=control['$ref'].data):
-        deferred_catalog.resolve_references()
+def test_auto_resolution(bundle):
+    deferred_catalog, bundle1, bundle2, control = bundle
+
+    assert bundle1.evaluate(JSON([])).valid is True
+    assert_resolved_catalog(*bundle)
 
 
 def test_resolution_that_loads_unresolved(deferred_catalog, dict_source):
