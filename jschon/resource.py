@@ -279,6 +279,11 @@ class JSONResource(JSON):
         itemclass: Type[JSON] = None,
         **itemkwargs: Any,
     ) -> None:
+
+        # Set here and in pre_recursion_init() to handle both normal
+        # subclasses those that don't invoke their superclass constructor.
+        self._auto_resolve_references: bool = resolve_references
+
         if pre_recursion_args is None:
             pre_recursion_args = {}
 
@@ -301,10 +306,11 @@ class JSONResource(JSON):
             key=key,
             itemclass=itemclass,
             pre_recursion_args=local_pre_recursion_args,
+            resolve_references=resolve_references,
             **itemkwargs,
         )
 
-        if parent is None and resolve_references:
+        if parent is None and self._auto_resolve_references:
             self.resolve_references()
 
     def pre_recursion_init(
@@ -316,6 +322,7 @@ class JSONResource(JSON):
         additional_uris: Set[URI] = frozenset(),
         initial_base_uri: Optional[URI] = None,
         default_uri_factory: Callable[[], URI] = DEFAULT_URI_FACTORY,
+        resolve_references: bool = True,
         **kwargs: Any,
     ):
         """
@@ -381,7 +388,10 @@ class JSONResource(JSON):
         except AttributeError:
             raise ResourceNotReadyError()
 
-        self.references_resolved = False
+        self.references_resolved: bool = False
+        """``True`` if all references have been resolved by walking all (sub)schemas."""
+
+        self._auto_resolve_references: bool = resolve_references
 
         self._uri: Optional[URI] = None
         self._base_uri: Optional[URI] = None
@@ -682,4 +692,8 @@ class JSONResource(JSON):
         If references are not supported, reference resolution trivially
         succeeds.  This is the default behavior.
         """
+        # Avoid locking in the child_resource_nodes cached property
+        # as this method is often called relatively early in initialization.
+        for child in self._find_child_resource_nodes(self):
+            child.resolve_references()
         self.references_resolved = True
