@@ -3,7 +3,7 @@ Changelog
 
 v0.11.1 (in development)
 ------------------------
-Features:
+Bug Fixes:
 
 * Allow adding a source with a base URI of ``None`` to match full URIs as the ``relative_path``
 * ``JSONPointer`` and ``RelativeJSONPointer`` now have class attributes defining
@@ -13,8 +13,6 @@ Features:
 * JSON.instantiate_{sequence|mapping}() functions allow more
   fine-grained control of JSON subclass document structure
 * ``"$schema"`` can change value in subschemas that have an ``"$id"``
-* Support mutually referencing embedded subschema resources with the
-  ``resolve_references`` constructor parameter and method for ``JSONSchema``.
 * Support mutually referencing embedded subschema resources with the
   ``resolve_references`` constructor parameters and methods on
   ``JSONSchema``, ``Catalog``, and ``create_catalog``.
