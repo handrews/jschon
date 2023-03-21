@@ -3,13 +3,11 @@ Changelog
 
 v0.11.1 (in development)
 ------------------------
-Features:
+Bug Fixes:
 
 * ``JSONPointer`` and ``RelativeJSONPointer`` now have class attributes defining
   the exceptions that they use, which can be overidden in subclasses
 * Cached properties for accessing document and resource root schemas from subschemas
-* Support mutually referencing embedded subschema resources with the
-  ``resolve_references`` constructor parameter and method for ``JSONSchema``.
 * Support mutually referencing embedded subschema resources with the
   ``resolve_references`` constructor parameters and methods on
   ``JSONSchema``, ``Catalog``, and ``create_catalog``.
