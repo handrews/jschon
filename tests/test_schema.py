@@ -4,7 +4,8 @@ import pytest
 from hypothesis import given
 from pytest import param as p
 
-from jschon import JSON, JSONPointer, JSONSchema, URI, CatalogError, create_catalog
+from jschon import \
+    JSON, JSONPointer, JSONSchema, JSONSchemaError, URI, CatalogError, create_catalog
 from jschon.resource import JSONResource
 from jschon.catalog import Source
 from jschon.json import false, true
@@ -121,7 +122,7 @@ def test_deferred_ref_resolution():
 
     assert bundle1.references_resolved is False
     assert bundle2.references_resolved is False
-    with pytest.raises(AttributeError):
+    with pytest.raises(JSONSchemaError, match='resolve_references'):
         bundle1['$defs']['a'].evaluate(JSON([]))
 
     ref1 = bundle1['$defs']['a'].keywords['$ref']
@@ -145,7 +146,7 @@ def test_deferred_ref_resolution():
         assert kwd.refschema is None
         with pytest.raises(AttributeError):
             kwd.evaluate(kwd.parentschema, JSON({}))
-    with pytest.raises(AttributeError):
+    with pytest.raises(JSONSchemaError, match='resolve_references'):
         bundle1['$defs']['a'].evaluate(JSON([]))
 
     bundle2.resolve_references()
