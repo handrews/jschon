@@ -90,23 +90,43 @@ class Catalog:
         """Return `repr(self)`."""
         return f'{self.__class__.__name__}({self.name!r})'
 
-    def add_uri_source(self, base_uri: URI, source: Source) -> None:
+    def add_uri_source(
+        self,
+        base_uri: URI = None,
+        source: Source = None,
+        uri_prefix: str = '',
+    ) -> None:
         """Register a source for loading URI-identified JSON resources.
 
         :param base_uri: a normalized, absolute URI - including scheme, without
             a fragment, and ending with ``'/'``
         :param source: a :class:`Source` object
+        :param uri_prefix: an arbitrary prefix string used if no ``base_uri``
+            is provided; sources such as :class:`RemoteSource` that expect
+            proper base URI behavior SHOULD NOT be registered with this parameter
         :raise CatalogError: if `base_uri` is invalid
         """
-        try:
-            base_uri.validate(require_scheme=True, require_normalized=True, allow_fragment=False)
-        except URIError as e:
-            raise CatalogError from e
+        # Defaulting source to None preserves backwards compatibility with
+        # jschon 0.9.0 by keeping the same positional parameter order while
+        # allowing base_uri to be omitted for the new uri_prefix behavior
+        if source is None:
+            raise TypeError("add_uri_source() missing required argument: 'source'")
 
-        if not base_uri.path or not base_uri.path.endswith('/'):
-            raise CatalogError('base_uri must end with "/"')
+        if base_uri is not None:
+            try:
+                base_uri.validate(
+                    require_scheme=True,
+                    require_normalized=True,
+                    allow_fragment=False,
+                )
+            except URIError as e:
+                raise CatalogError from e
 
-        self._uri_sources[base_uri] = source
+            if not base_uri.path or not base_uri.path.endswith('/'):
+                raise CatalogError('base_uri must end with "/"')
+            uri_prefix = base_uri
+
+        self._uri_sources[uri_prefix] = source
 
     def load_json(self, uri: URI) -> JSONCompatible:
         """Load a JSON-compatible object from the source for `uri`.

@@ -17,6 +17,7 @@ from jschon import (
     LocalSource,
     RemoteSource,
 )
+from jschon.catalog import Source
 from jschon.vocabulary import Metaschema, Keyword
 from tests import example_schema, metaschema_uri_2020_12, core_vocab_uri_2020_12
 
@@ -118,6 +119,31 @@ def test_remote_source(base_uri, httpserver, new_catalog):
 def test_uri_source_invalid_uri(base_uri, new_catalog):
     with pytest.raises(CatalogError):
         new_catalog.add_uri_source(URI(base_uri), LocalSource('/'))
+
+
+@pytest.mark.parametrize('prefix', (
+    None, # rely on the default value of ''
+    'tag:jschon.dev,2023-03:',
+))
+def test_uri_source_uri_prefix(prefix, new_catalog):
+    class PrefixSource(Source):
+        def __init__(self, uri_prefix, **kwargs):
+            super().__init__(**kwargs)
+            self._prefix = uri_prefix
+
+        def __call__(self, relative_path):
+            return {
+                "$schema": str(metaschema_uri_2020_12),
+                "$id": f'{self._prefix}{relative_path}',
+            }
+    kwargs = {
+        'source': PrefixSource(prefix or ''),
+    }
+    if prefix is not None:
+        kwargs['uri_prefix'] = prefix
+    new_catalog.add_uri_source(**kwargs)
+    schema = new_catalog.get_schema('bar')
+    assert str(schema['$id']) == f'{prefix or ""}bar'
 
 
 @pytest.mark.parametrize('uri', [
