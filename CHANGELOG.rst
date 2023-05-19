@@ -10,6 +10,8 @@ Features:
   the exceptions that they use, which can be overidden in subclasses
 * Cached property for accessing document root node from within JSON documents
 * Cached properties for accessing document and resource root schemas from subschemas
+* JSON.instantiate_{sequence|mapping}() functions allow more
+  fine-grained control of JSON subclass document structure
 
 
 v0.11.0 (2023-06-03)
