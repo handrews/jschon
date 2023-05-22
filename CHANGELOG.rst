@@ -3,6 +3,11 @@ Changelog
 
 v0.10.4 (in development)
 ------------------------
+Features:
+
+* JSON.instantiate_{sequence|mapping}() functions allow more
+  fine-grained control of JSON vs JSONSchema document structure
+
 Bug Fixes:
 
 * "format" applies to all types
@@ -17,8 +22,6 @@ Bug Fixes:
 Documentation:
 
 * Spell 'meta-schema' consistently in tutorials and examples
-
-
 v0.10.2 (2023-04-20)
 --------------------
 Experimental:
