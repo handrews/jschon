@@ -1,6 +1,13 @@
 Changelog
 =========
 
+v0.10.4 (in development)
+------------------------
+Bug Fixes:
+
+* "format" applies to all types
+
+
 v0.10.3 (2023-05-21)
 --------------------
 Bug Fixes:
