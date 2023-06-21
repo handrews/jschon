@@ -7,6 +7,11 @@ Features:
 
 * ``JSONPointer`` and ``RelativeJSONPointer`` now have class attributes defining
   the exceptions that they use, which can be overidden in subclasses
+* ``RelativeJSONPointer`` now has a class attribute defining which matching
+  ``JSONPointer`` subclass to use for the path component, which can be
+  overridden in subclasses
+* ``JSONPointer`` and ``RelativeJSONPointer`` now instantiate the same subclass
+  as ``self`` when producing new instances such as when the ``/`` operator is used
 
 
 v0.11.0 (2023-06-03)
