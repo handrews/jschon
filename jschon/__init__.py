@@ -32,7 +32,7 @@ __version__ = '0.11.1'
 def create_catalog(
     *versions: str,
     name: str = 'catalog',
-    resolve_references: bool = True
+    resolve_references: bool = True,
     cls: Type[Catalog] = Catalog,
 ) -> Catalog:
     """Create and return a :class:`~jschon.catalog.Catalog` instance,
