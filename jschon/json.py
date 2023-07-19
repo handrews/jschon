@@ -6,6 +6,7 @@ from functools import cached_property
 from os import PathLike
 from typing import Any, ClassVar, Dict, Iterator, List, Mapping, MutableMapping, MutableSequence, Optional, Sequence, Type, Union
 
+from jschon.uri import URI
 from jschon.exceptions import JSONError, JSONPointerError
 from jschon.jsonpointer import JSONPointer
 from jschon.utils import json_dumpf, json_dumps, json_loadf, json_loadr, json_loads
@@ -491,3 +492,89 @@ class JSON(MutableSequence['JSON'], MutableMapping[str, 'JSON']):
         """
         *Not yet implemented; experimental.*
         """
+
+
+class CatalogedJSON(JSON):
+    _uri_cls: ClassVar[Type[URI]] = URI
+    """Associated :class:`URI` subclass for identification and loading.
+
+    This class is used for schema and vocabulary lookups in the
+    :class:`jschon.catalog.Catalog` and in keyword implementations.
+    """
+
+    _catalog_cls: ClassVar[Type[Catalog]]
+    """Associated :class:`Catalog` subclass for registering and loading."""
+
+    @classmethod
+    def _set_catalog_cls(cls):
+        from jschon.catalog import Catalog
+        cls._catalog_cls = Catalog
+
+    def __init__(
+            self,
+            value: Union[bool, Mapping[str, JSONCompatible]],
+            *,
+            catalog: Union[str, Catalog] = 'catalog',
+            cacheid: Hashable = 'default',
+            uri: URI = None,
+            metaschema_uri: URI = None,
+            parent: JSON = None,
+            key: str = None,
+            resolve_references: bool = True,
+            itemclass: Type[JSON] = None,
+            **itemkwargs: Any,
+    ):
+        self._init_referencing(
+            catalog,
+            cacheid,
+            uri,
+            metaschema_uri,
+            resolve_references,
+        )
+        super().__init__(
+            value,
+            parent=parent,
+            key=key,
+            itemclass=itemclass,
+            **itemkwargs,
+        )
+        if (
+            isinstance(value, Mapping) and
+            self.parent is None
+            and resolve_references
+        ):
+            self.resolve_references()
+
+    def _init_referencing(
+        self,
+        catalog,
+        cacheid,
+        uri,
+        metaschema_uri,
+        resolve_references,
+    ):
+        cls = type(self)
+        if not hasattr(cls, '_catalog_cls'):
+            self._set_catalog_cls()
+
+        if not isinstance(catalog, self._catalog_cls):
+            catalog = self._catalog_cls.get_catalog(catalog)
+
+        self.catalog: Catalog = catalog
+        """The catalog in which the schema is cached."""
+
+        self.cacheid: Hashable = cacheid
+        """Schema cache identifier."""
+
+        self.references_resolved: bool = False
+        """``True`` if all references have been resolved by walking all (sub)schemas."""
+
+        if uri is not None:
+            catalog.add_schema(uri, self, cacheid=cacheid)
+
+        self._uri: Optional[URI] = uri
+        self._metaschema_uri: Optional[URI] = metaschema_uri
+
+
+    def resolve_references(self) -> None:
+        raise NotImplementedError

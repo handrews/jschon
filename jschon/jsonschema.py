@@ -7,7 +7,7 @@ from typing import Any, ClassVar, ContextManager, Dict, Hashable, Iterator, Mapp
 from uuid import uuid4
 
 from jschon.exceptions import JSONSchemaError
-from jschon.json import JSON, JSONCompatible
+from jschon.json import CatalogedJSON, JSON, JSONCompatible
 from jschon.jsonpointer import JSONPointer
 from jschon.uri import URI
 
@@ -21,20 +21,12 @@ __all__ = [
 ]
 
 
-class JSONSchema(JSON):
+class JSONSchema(CatalogedJSON):
     """JSON schema document model."""
 
     # Note that _json_pointer_cls is set in the JSON base class
     _json_schema_exc: ClassVar[Type[JSONSchemaError]] = JSONSchemaError
     """Associated :class:`JSONSchemaError` subclass for general exceptions."""
-
-    _catalog_cls: ClassVar[Type[Catalog]]
-    """Associated :class:`Catalog` subclass for registering and loading."""
-
-    @classmethod
-    def _set_catalog_cls(cls):
-        from jschon.catalog import Catalog
-        cls._catalog_cls = Catalog
 
     def __init__(
             self,
@@ -70,27 +62,7 @@ class JSONSchema(JSON):
             on each unresolved schema, or :meth:`~jschon.catalog.Catalog.resolve_references`
             on the relevant catalog.
         """
-        cls = type(self)
-        if not hasattr(cls, '_catalog_cls'):
-            self._set_catalog_cls()
-
-        if not isinstance(catalog, self._catalog_cls):
-            catalog = self._catalog_cls.get_catalog(catalog)
-
-        self.catalog: Catalog = catalog
-        """The catalog in which the schema is cached."""
-
-        self.cacheid: Hashable = cacheid
-        """Schema cache identifier."""
-
-        self.references_resolved: bool = False
-        """``True`` if all references have been resolved by walking all (sub)schemas."""
-
-        if uri is not None:
-            catalog.add_schema(uri, self, cacheid=cacheid)
-
-        self._uri: Optional[URI] = uri
-        self._metaschema_uri: Optional[URI] = metaschema_uri
+        self._init_referencing(catalog, cacheid, uri, metaschema_uri, resolve_references)
 
         self.keywords: Dict[str, Keyword] = {}
         """A dictionary of the schema's :class:`~jschon.vocabulary.Keyword`
