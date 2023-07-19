@@ -5,6 +5,9 @@ v0.11.1 (in development)
 ------------------------
 Features:
 
+* Support mutually referencing embedded subschema resources with the
+  ``resolve_references`` constructor parameters and methods on
+  ``JSONSchema``, ``Catalog``, and ``create_catalog``.
 * Allow adding a source with a base URI of ``None`` to match full URIs as the ``relative_path``
 * ``JSONPointer`` and ``RelativeJSONPointer`` now have class attributes defining
   the exceptions that they use, which can be overidden in subclasses
