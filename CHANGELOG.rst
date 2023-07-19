@@ -14,6 +14,8 @@ Features:
 * ``"$schema"`` can change value in subschemas that have an ``"$id"``
 * Cached properties for accessing document and resource root schemas from subschemas
 * Added ``RewritingLocalSource`` and ``RewritingRemoteSource`` for complex reference mapping
+* JSON.instantiate_{sequence|mapping}() functions allow more
+  fine-grained control of JSON subclass document structure
 
 
 v0.11.0 (2023-06-03)
@@ -50,8 +52,6 @@ Bug Fixes:
 Documentation:
 
 * Spell 'meta-schema' consistently in tutorials and examples
-
-
 v0.10.2 (2023-04-20)
 --------------------
 Experimental:
