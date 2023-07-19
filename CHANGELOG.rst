@@ -1,7 +1,7 @@
 Changelog
 =========
 
-v0.11.1 (in development)
+v0.12.0 (in development)
 ------------------------
 Features:
 
@@ -9,13 +9,18 @@ Features:
   ``resolve_references`` constructor parameters and methods on
   ``JSONSchema``, ``Catalog``, and ``create_catalog``.
 * Allow adding a source with a base URI of ``None`` to match full URIs as the ``relative_path``
-* ``JSONPointer`` and ``RelativeJSONPointer`` now have class attributes defining
-  the exceptions that they use, which can be overidden in subclasses
-* ``"$schema"`` can change value in subschemas that have an ``"$id"``
-* Cached properties for accessing document and resource root schemas from subschemas
 * Added ``RewritingLocalSource`` and ``RewritingRemoteSource`` for complex reference mapping
+* ``"$schema"`` can change value in subschemas that have an ``"$id"``
 * JSON.instantiate_{sequence|mapping}() functions allow more
   fine-grained control of JSON subclass document structure
+* Cached properties for accessing document and resource root schemas from subschemas
+
+Experimental:
+
+* Most classes now have class attributes indicating what related classes and exceptions
+  to instantiate, and use ``type(self)()`` or ``cls()`` to instantiate instances of
+  the same type as themselves.  This allows coordinated subclasses to work together.
+  The exact mechanism of supporting this (class attributes) is subject to change.
 
 
 v0.11.0 (2023-06-03)

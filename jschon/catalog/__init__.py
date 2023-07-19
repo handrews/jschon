@@ -53,7 +53,10 @@ class LocalSource(Source):
                 # the exception args, which is what the Catalog
                 # puts in the CatalogError.  So it needs to be
                 # added separately for filesystem errors.
-                raise CatalogError(f'{e.strerror}: {e.filename!r}')
+                #
+                # Use ValueError to defer the exact exception
+                # subclass to the Catalog itself.
+                raise ValueError(f'{e.strerror}: {e.filename!r}') from e
             raise
 
 
@@ -63,7 +66,7 @@ class RemoteSource(Source):
         self.base_url = base_url
 
     def __call__(self, relative_path: str) -> JSONCompatible:
-        url = str(URI(relative_path).resolve(self.base_url))
+        url = str(type(self.base_url)(relative_path).resolve(self.base_url))
         if self.suffix:
             url += self.suffix
 
@@ -141,6 +144,19 @@ class Catalog:
     """The :class:`Catalog` acts as a schema cache, enabling schemas and
     subschemas to be indexed, re-used, and cross-referenced by URI."""
 
+    _json_schema_cls: ClassVar[Type[JSONSchema]] = JSONSchema
+    """The :class:`JSONSchema` subclass to instantiate when loading.
+
+    This class is also used to determine related classes including
+    the :class:`URI` subclass used for identification and caching.
+    """
+
+    _metaschema_cls: ClassVar[Type[Metaschema]] = Metaschema
+    """The :class:`Metaschema` subclass to instantiate when loading."""
+
+    _catalog_exc: ClassVar[Type[CatalogError]] = CatalogError
+    """The :class:`CatalogError` subclass to use for general exceptions."""
+
     _catalog_registry: Dict[Hashable, Catalog] = {}
 
     @classmethod
@@ -148,7 +164,7 @@ class Catalog:
         try:
             return cls._catalog_registry[name]
         except KeyError:
-            raise CatalogError(f'Catalog name "{name}" not found.')
+            raise cls._catalog_exc(f'Catalog name "{name}" not found.')
 
     def __init__(
         self,
@@ -198,10 +214,10 @@ class Catalog:
                     allow_fragment=False,
                 )
             except URIError as e:
-                raise CatalogError from e
+                raise self._catalog_exc from e
 
             if not base_uri.path or not base_uri.path.endswith('/'):
-                raise CatalogError('base_uri must end with "/"')
+                raise self._catalog_exc('base_uri must end with "/"')
             prefix = str(base_uri)
 
         self._uri_sources[prefix] = source
@@ -220,7 +236,7 @@ class Catalog:
         try:
             uri.validate(require_scheme=True, require_normalized=True, allow_fragment=False)
         except URIError as e:
-            raise CatalogError from e
+            raise self._catalog_exc from e
 
         uristr = str(uri)
         candidates = [
@@ -234,12 +250,10 @@ class Catalog:
             relative_path = uristr[len(prefix):]
             try:
                 return source(relative_path)
-            except CatalogError:
-                raise
             except Exception as e:
-                raise CatalogError(*e.args) from e
+                raise self._catalog_exc(*e.args) from e
 
-        raise CatalogError(f'A source is not available for "{uri}"')
+        raise self._catalog_exc(f'A source is not available for "{uri}"')
 
     def create_vocabulary(self, uri: URI, *kwclasses: KeywordClass) -> Vocabulary:
         """Create a :class:`~jschon.vocabulary.Vocabulary` object, which
@@ -264,7 +278,7 @@ class Catalog:
         try:
             return self._vocabularies[uri]
         except KeyError:
-            raise CatalogError(f"Unrecognized vocabulary URI '{uri}'")
+            raise self._catalog_exc(f"Unrecognized vocabulary URI '{uri}'")
 
     def create_metaschema(
             self,
@@ -300,7 +314,7 @@ class Catalog:
             self.get_vocabulary(vocab_uri)
             for vocab_uri in default_vocabulary_uris
         ]
-        metaschema = Metaschema(
+        metaschema = self._metaschema_cls(
             self,
             metaschema_doc,
             default_core_vocabulary,
@@ -311,7 +325,7 @@ class Catalog:
         if not self._auto_resolve_references:
             self.resolve_references(cacheid='__meta__')
         if not metaschema.validate().valid:
-            raise CatalogError(
+            raise self._catalog_exc(
                 "The metaschema is invalid against its own metaschema "
                 f'"{metaschema_doc["$schema"]}"'
             )
@@ -339,8 +353,8 @@ class Catalog:
         if not metaschema:
             metaschema = self.create_metaschema(uri)
 
-        if not isinstance(metaschema, Metaschema):
-            raise CatalogError(f"The schema referenced by {uri} is not a metaschema")
+        if not isinstance(metaschema, self._metaschema_cls):
+            raise self._catalog_exc(f"The schema referenced by {uri} is not a metaschema")
 
         return metaschema
 
@@ -423,7 +437,7 @@ class Catalog:
 
         if schema is None:
             doc = self.load_json(base_uri)
-            schema = JSONSchema(
+            schema = self._json_schema_cls(
                 doc,
                 catalog=self,
                 cacheid=cacheid,
@@ -438,13 +452,17 @@ class Catalog:
 
         if uri.fragment:
             try:
-                ptr = JSONPointer.parse_uri_fragment(uri.fragment)
+                ptr = self._json_schema_cls._json_pointer_cls.parse_uri_fragment(
+                    uri.fragment
+                )
                 schema = ptr.evaluate(schema)
             except JSONPointerError as e:
-                raise CatalogError(f"Schema not found for {uri}") from e
+                raise self._catalog_exc(f"Schema not found for {uri}") from e
 
-        if not isinstance(schema, JSONSchema):
-            raise CatalogError(f"The object referenced by {uri} is not a JSON Schema")
+        if not isinstance(schema, self._json_schema_cls):
+            raise self._catalog_exc(
+                f"The object referenced by {uri} is not a JSON Schema",
+            )
 
         return schema
 
@@ -488,7 +506,7 @@ class Catalog:
             cacheid = uuid.uuid4()
 
         if cacheid in self._schema_cache:
-            raise CatalogError("cache identifier is already in use")
+            raise self._catalog_exc("cache identifier is already in use")
 
         try:
             yield cacheid

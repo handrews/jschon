@@ -1,3 +1,5 @@
+from typing import Type
+
 from .catalog import Catalog, LocalSource, RemoteSource, RewritingLocalSource, RewritingRemoteSource
 from .exceptions import CatalogError, JSONError, JSONPatchError, JSONPointerError, JSONSchemaError, URIError
 from .json import JSON, JSONCompatible
@@ -31,6 +33,7 @@ def create_catalog(
     *versions: str,
     name: str = 'catalog',
     resolve_references: bool = True
+    cls: Type[Catalog] = Catalog,
 ) -> Catalog:
     """Create and return a :class:`~jschon.catalog.Catalog` instance,
     initialized with a meta-schema and keyword support for each of the
@@ -43,11 +46,12 @@ def create_catalog(
         if set to ``False`` a separate call to
         :meth:`~jschon.catalog.Catalog.resolve_references` is required prior to
         evaluating any schemas.
+    :param cls: The sublcass of `~jschon.catalog.Catalog` to initiate.
     :raise ValueError: If any of `versions` is unrecognized.
     """
     from .catalog import _2019_09, _2020_12, _next
 
-    catalog = Catalog(name=name, resolve_references=resolve_references)
+    catalog = cls(name=name, resolve_references=resolve_references)
 
     version_initializers = {
         '2019-09': _2019_09.initialize,

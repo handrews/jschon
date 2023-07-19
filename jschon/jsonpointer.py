@@ -4,7 +4,7 @@ import collections
 import re
 import urllib.parse
 from typing import (
-    Any, Iterable, Literal, Mapping, Sequence, Type, TYPE_CHECKING, Union, overload,
+    Any, ClassVar, Iterable, Literal, Mapping, Sequence, Type, TYPE_CHECKING, Union, overload,
 )
 
 from jschon.exc import (
@@ -72,10 +72,14 @@ class JSONPointer(Sequence[str]):
        and referred to as *keys* in the JSONPointer class.
     """
 
-    malformed_exc: Type[JSONPointerMalformedError] = JSONPointerMalformedError
+    _malformed_exc: ClassVar[Type[
+        JSONPointerMalformedError
+    ]] = JSONPointerMalformedError
     """Exception raised when the input is not a valid JSON Pointer."""
 
-    reference_exc: Type[JSONPointerReferenceError] = JSONPointerReferenceError
+    _reference_exc: ClassVar[Type[
+        JSONPointerReferenceError
+    ]] = JSONPointerReferenceError
     """Exception raised when the JSON Pointer cannot be resolved against a document."""
 
     _json_pointer_re = re.compile(JSON_POINTER_RE)
@@ -96,7 +100,7 @@ class JSONPointer(Sequence[str]):
         for value in values:
             if isinstance(value, str):
                 if not JSONPointer._json_pointer_re.fullmatch(value):
-                    raise cls.malformed_exc(f"'{value}' is not a valid JSON pointer")
+                    raise cls._malformed_exc(f"'{value}' is not a valid JSON pointer")
                 self._keys.extend(self.unescape(token) for token in value.split('/')[1:])
 
             elif isinstance(value, JSONPointer):
@@ -123,7 +127,7 @@ class JSONPointer(Sequence[str]):
         if isinstance(index, int):
             return self._keys[index]
         if isinstance(index, slice):
-            return JSONPointer(self._keys[index])
+            return self.__class__(self._keys[index])
         raise TypeError("Expecting int or slice")
 
     def __len__(self) -> int:
@@ -141,9 +145,9 @@ class JSONPointer(Sequence[str]):
     def __truediv__(self, suffix) -> JSONPointer:
         """Return `self / suffix`."""
         if isinstance(suffix, str):
-            return JSONPointer(self, (suffix,))
+            return self.__class__(self, (suffix,))
         if isinstance(suffix, Iterable):
-            return JSONPointer(self, suffix)
+            return self.__class__(self, suffix)
         return NotImplemented
 
     def __eq__(self, other: JSONPointer) -> bool:
@@ -182,7 +186,7 @@ class JSONPointer(Sequence[str]):
 
     def __repr__(self) -> str:
         """Return `repr(self)`."""
-        return f"JSONPointer({str(self)!r})"
+        return f"{self.__class__.__name__}({str(self)!r})"
 
     def evaluate(self, document: Any) -> Any:
         """Return the value within `document` at the location referenced by `self`.
@@ -210,13 +214,13 @@ class JSONPointer(Sequence[str]):
                 if isjson and value.type == "array" or \
                         not isjson and isinstance(value, Sequence) and \
                         not isinstance(value, str) and \
-                        JSONPointer._array_index_re.fullmatch(key):
+                        self._array_index_re.fullmatch(key):
                     return resolve(value[int(key)], keys)
 
             except (KeyError, IndexError):
                 pass
 
-            raise self.reference_exc(f"Path '{self}' not found in document")
+            raise self._reference_exc(f"Path '{self}' not found in document")
 
         return resolve(document, collections.deque(self._keys))
 
@@ -230,7 +234,7 @@ class JSONPointer(Sequence[str]):
 
         :param value: a percent-encoded URI fragment
         """
-        return JSONPointer(urllib.parse.unquote(value))
+        return cls(urllib.parse.unquote(value))
 
     def uri_fragment(self) -> str:
         """Return a percent-encoded URI fragment representation of `self`.
@@ -274,14 +278,17 @@ class JSONPointer(Sequence[str]):
 
 
 class RelativeJSONPointer:
-    malformed_exc: Type[
+    _malformed_exc: ClassVar[Type[
         RelativeJSONPointerMalformedError
-    ] = RelativeJSONPointerMalformedError
+    ]] = RelativeJSONPointerMalformedError
     """Exception raised when the input is not a valid Relative JSON Pointer."""
-    reference_exc: Type[
+    _reference_exc: ClassVar[Type[
         RelativeJSONPointerReferenceError
-    ] = RelativeJSONPointerReferenceError
+    ]] = RelativeJSONPointerReferenceError
     """Exception raised when the Relative JSON Pointer cannot be resolved against a document."""
+
+    _json_pointer_cls: ClassVar[Type[JSONPointer]] = JSONPointer
+    """JSONPointer subclass used to implement the ``ref`` portion of the relative pointer."""
 
     _regex = re.compile(RELATIVE_JSON_POINTER_RE)
 
@@ -292,7 +299,7 @@ class RelativeJSONPointer:
             *,
             up: int = 0,
             over: int = 0,
-            ref: Union[JSONPointer, Literal['#']] = JSONPointer(),
+            ref: Union[JSONPointer, Literal['#'], Literal['']] = '',
     ) -> RelativeJSONPointer:
         """Create and return a new :class:`RelativeJSONPointer` instance.
 
@@ -310,18 +317,25 @@ class RelativeJSONPointer:
         self = object.__new__(cls)
 
         if value is not None:
-            if not (match := RelativeJSONPointer._regex.fullmatch(value)):
-                raise cls.malformed_exc(f"'{value}' is not a valid relative JSON pointer")
+            if not (match := cls._regex.fullmatch(value)):
+                raise cls._malformed_exc(f"'{value}' is not a valid relative JSON pointer")
 
             up, over, ref = match.group('up', 'over', 'ref')
             self.up = int(up)
             self.over = int(over) if over else 0
-            self.path = JSONPointer(ref) if ref != '#' else None
+            self.path = cls._json_pointer_cls(ref) if ref != '#' else None
 
         else:
             self.up = up
             self.over = over
-            self.path = ref if isinstance(ref, JSONPointer) else None
+            if isinstance(ref, cls._json_pointer_cls):
+                self.path = ref
+            elif ref == '':
+                self.path = cls._json_pointer_cls()
+            elif isinstance(ref, JSONPointer):
+                self.path = cls._json_pointer_cls(str(ref))
+            else:
+                self.path = None
 
         self.index = ref == '#'
 
@@ -353,7 +367,7 @@ class RelativeJSONPointer:
 
     def __repr__(self) -> str:
         """Return `repr(self)`."""
-        return f'RelativeJSONPointer({str(self)!r})'
+        return f'{self.__class__.__name__}({str(self)!r})'
 
     def evaluate(self, document: JSON) -> Union[int, str, JSON]:
         """Return the value within `document` at the location referenced by `self`.
@@ -368,25 +382,25 @@ class RelativeJSONPointer:
         node = document
         for _ in range(self.up):
             if node.parent is None:
-                raise self.reference_exc('Up too many levels')
+                raise self._reference_exc('Up too many levels')
             node = node.parent
 
         if self.over:
             if node.parent is None:
-                raise self.reference_exc('No containing node for index adjustment')
+                raise self._reference_exc('No containing node for index adjustment')
             if node.parent.type != "array":
-                raise self.reference_exc(f'Index adjustment not valid for type {node.parent.type}')
+                raise self._reference_exc(f'Index adjustment not valid for type {node.parent.type}')
             adjusted = int(node.key) + self.over
             if adjusted < 0 or adjusted >= len(node.parent):
-                raise self.reference_exc(f'Index adjustment out of range')
+                raise self._reference_exc(f'Index adjustment out of range')
             node = node.parent[adjusted]
 
         if self.index:
             if node.parent is None:
-                raise self.reference_exc('No containing node')
+                raise self._reference_exc('No containing node')
             return int(node.key) if node.parent.type == "array" else node.key
 
         try:
             return self.path.evaluate(node)
         except JSONPointerReferenceError as e:
-            raise self.reference_exc from e
+            raise self._reference_exc from e
