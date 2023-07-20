@@ -352,49 +352,51 @@ class Catalog:
         :raise CatalogError: if a schema cannot be found for `uri`, or if the
             object referenced by `uri` is not a :class:`~jschon.jsonschema.JSONSchema`
         """
-        try:
-            return self._schema_cache[cacheid][uri]
-        except KeyError:
-            pass
-
         if cls is None:
             cls = self._json_schema_cls
-
         schema = None
-        base_uri = uri.copy(fragment=False)
 
-        if uri.fragment is not None:
-            try:
-                schema = self._schema_cache[cacheid][base_uri]
-            except KeyError:
-                pass
+        try:
+            schema = self._schema_cache[cacheid][uri]
+        except KeyError:
+            base_uri = uri.copy(fragment=False)
 
-        if schema is None:
-            doc = self.load_json(base_uri)
-            schema = cls(
-                doc,
-                catalog=self,
-                cacheid=cacheid,
-                uri=base_uri,
-                metaschema_uri=metaschema_uri,
-                resolve_references=self._auto_resolve_references,
-            )
-            try:
-                return self._schema_cache[cacheid][uri]
-            except KeyError:
-                pass
+            if uri.fragment is not None:
+                try:
+                    schema = self._schema_cache[cacheid][base_uri]
+                except KeyError:
+                    pass
 
-        if uri.fragment:
-            try:
-                ptr = JSONPointer.parse_uri_fragment(uri.fragment)
-                schema = ptr.evaluate(schema)
-            except JSONPointerError as e:
-                raise self._catalog_exc(f"Schema not found for {uri}") from e
+            if schema is None:
+                doc = self.load_json(base_uri)
+                schema = cls(
+                    doc,
+                    catalog=self,
+                    cacheid=cacheid,
+                    uri=base_uri,
+                    metaschema_uri=metaschema_uri,
+                    resolve_references=self._auto_resolve_references,
+                )
+                try:
+                    return self._schema_cache[cacheid][uri]
+                except KeyError:
+                    pass
+
+            if uri.fragment:
+                try:
+                    ptr = JSONPointer.parse_uri_fragment(uri.fragment)
+                    schema = ptr.evaluate(schema)
+                except JSONPointerError as e:
+                    raise self._catalog_exc(
+                        f"Schema not found for {uri}",
+                    ) from e
 
         if not isinstance(schema, cls):
             raise self._catalog_exc(
                 f"The object referenced by {uri} is not an "
-                f"instance of '{cls.__module__}.{cls.__name__}'",
+                f"instance of '{cls.__module__}.{cls.__name__}'; "
+                f"it is an instance of "
+                f"'{type(schema).__module__}.{type(schema).__name__}'",
             )
 
         return schema
