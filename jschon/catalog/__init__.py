@@ -340,6 +340,7 @@ class Catalog:
             *,
             metaschema_uri: URI = None,
             cacheid: Hashable = 'default',
+            cls: Type[CatalogedJSON] = None,
     ) -> JSONSchema:
         """Get a (sub)schema identified by `uri` from a cache, or
         load it from disk if not already cached.
@@ -356,6 +357,9 @@ class Catalog:
         except KeyError:
             pass
 
+        if cls is None:
+            cls = self._json_schema_cls
+
         schema = None
         base_uri = uri.copy(fragment=False)
 
@@ -367,7 +371,7 @@ class Catalog:
 
         if schema is None:
             doc = self.load_json(base_uri)
-            schema = self._json_schema_cls(
+            schema = cls(
                 doc,
                 catalog=self,
                 cacheid=cacheid,
@@ -382,16 +386,15 @@ class Catalog:
 
         if uri.fragment:
             try:
-                ptr = self._json_schema_cls._json_pointer_cls.parse_uri_fragment(
-                    uri.fragment
-                )
+                ptr = JSONPointer.parse_uri_fragment(uri.fragment)
                 schema = ptr.evaluate(schema)
             except JSONPointerError as e:
                 raise self._catalog_exc(f"Schema not found for {uri}") from e
 
-        if not isinstance(schema, self._json_schema_cls):
+        if not isinstance(schema, cls):
             raise self._catalog_exc(
-                f"The object referenced by {uri} is not a JSON Schema",
+                f"The object referenced by {uri} is not an "
+                f"instance of '{cls.__module__}.{cls.__name__}'",
             )
 
         return schema
