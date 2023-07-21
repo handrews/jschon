@@ -513,8 +513,10 @@ class CatalogedJSON(JSON):
         self.cacheid: Hashable
         """Schema cache identifier."""
 
-        self.references_resolved: bool
-        """``True`` if all references have been resolved by walking all (sub)schemas."""
+        self.references_resolved: bool = not isinstance(
+            value, (Sequence, Mapping),
+        )
+        """``True`` if all references have been resolved by walking all (sub)documents."""
         super().__init__(
             value,
             parent=parent,
@@ -522,11 +524,10 @@ class CatalogedJSON(JSON):
             itemclass=itemclass,
             **itemkwargs,
         )
-        self._init_referencing(
-            catalog,
-            cacheid,
-            uri,
-            resolve_references,
+        self._init_catalog(
+            catalog=catalog,
+            cacheid=cacheid,
+            uri=uri,
         )
         if (
             isinstance(value, Mapping) and
@@ -535,12 +536,12 @@ class CatalogedJSON(JSON):
         ):
             self.resolve_references()
 
-    def _init_referencing(
+    def _init_catalog(
         self,
-        catalog,
-        cacheid,
-        uri,
-        resolve_references,
+        *,
+        catalog: Catalog,
+        cacheid: str,
+        uri: URI,
     ):
         cls = type(self)
         if not hasattr(cls, '_catalog_cls'):
@@ -551,14 +552,14 @@ class CatalogedJSON(JSON):
 
         self.catalog = catalog
         self.cacheid = cacheid
-        self.references_resolved = False
 
         if uri is not None:
             catalog.add_schema(uri, self, cacheid=cacheid)
         self._uri: Optional[URI] = uri
 
     def resolve_references(self) -> None:
-        raise NotImplementedError
+        if not self.references_resolved:
+            raise NotImplementedError
 
     @property
     def base_uri(self) -> Optional[URI]:

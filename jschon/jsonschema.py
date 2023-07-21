@@ -76,8 +76,19 @@ class JSONSchemaContainer(CatalogedJSON):
         if self is not self.document_root:
             return self.document_root.metaschema_uri
 
+    @metaschema_uri.setter
+    def metaschema_uri(self, metaschema_uri: Optional[URI]) -> None:
+        self._metaschema_uri = metaschema_uri
 
-class JSONSchema(CatalogedJSON):
+    def validate(self) -> Result:
+        """Validate the schema against its metaschema."""
+        return self.metaschema.evaluate(
+            self,
+            Result(self.metaschema, self, validating_with=self.metaschema),
+        )
+
+
+class JSONSchema(JSONSchemaContainer):
     """JSON schema document model."""
 
     _json_schema_exc: ClassVar[Type[JSONSchemaError]] = JSONSchemaError
@@ -117,7 +128,11 @@ class JSONSchema(CatalogedJSON):
             on each unresolved schema, or :meth:`~jschon.catalog.Catalog.resolve_references`
             on the relevant catalog.
         """
-        self._init_referencing(catalog, cacheid, uri, metaschema_uri, resolve_references)
+
+        self.references_resolved: bool = False
+        """``True`` if all references have been resolved by walking all (sub)schemas."""
+
+        self._metaschema_uri: Optional[URI] = metaschema_uri
 
         self.keywords: Dict[str, Keyword] = {}
         """A dictionary of the schema's :class:`~jschon.vocabulary.Keyword`
@@ -146,8 +161,11 @@ class JSONSchema(CatalogedJSON):
         self.key: Optional[str] = key
         """The index of the schema within its parent."""
 
-        self._metaschema_uri: Optional[URI] = metaschema_uri
-        """The metaschema associated with this document for validation."""
+        self._init_catalog(
+            catalog=catalog,
+            cacheid=cacheid,
+            uri=uri,
+        )
 
         if isinstance(value, bool):
             self.type = "boolean"
@@ -362,6 +380,10 @@ class JSONSchema(CatalogedJSON):
             return self._metaschema_uri
         if self.parentschema is not None:
             return self.parentschema.metaschema_uri
+
+    @metaschema_uri.setter
+    def metaschema_uri(self, metaschema_uri: Optional[URI]) -> None:
+        self._metaschema_uri = metaschema_uri
 
     @property
     def base_uri(self) -> Optional[URI]:
