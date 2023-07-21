@@ -16,6 +16,7 @@ Catalog
 JSON
 ^^^^
 * :class:`~jschon.json.JSON`
+* :class:`~jschon.json.CatalogedJSON`
 * :class:`~jschon.json.JSONCompatible`
 
 JSON Patch
@@ -30,6 +31,7 @@ JSON Pointer
 
 JSON Schema
 ^^^^^^^^^^^
+* :class:`~jschon.jsonschema.JSONSchemaContainer`
 * :class:`~jschon.jsonschema.JSONSchema`
 * :class:`~jschon.jsonschema.Result`
 
