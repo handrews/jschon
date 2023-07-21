@@ -6,7 +6,7 @@ from functools import cached_property
 from typing import Any, ClassVar, ContextManager, Dict, Hashable, Iterator, Mapping, Optional, TYPE_CHECKING, Tuple, Type, Union
 from uuid import uuid4
 
-from jschon.exceptions import JSONSchemaError
+from jschon.exceptions import JSONError, JSONSchemaError
 from jschon.json import CatalogedJSON, JSON, JSONCompatible
 from jschon.jsonpointer import JSONPointer
 from jschon.uri import URI
@@ -21,10 +21,65 @@ __all__ = [
 ]
 
 
+class JSONSchemaContainer(CatalogedJSON):
+    """Base class for documents that either are or embed JSON Schemas.
+
+    This type of document supports associating a metaschema and using
+    :meth:`validate` in order to support switching metaschemas for
+    and/or within the embedded JSON Schema resources.
+    """
+
+    _metaschema_exc: ClassVar[Type[JSONError]] = JSONError
+    """Exception raised if no metaschema is present."""
+
+    def __init__(
+            self,
+            value: Union[bool, Mapping[str, JSONCompatible]],
+            *,
+            metaschema_uri: URI = None,
+            **kwargs: Any,
+    ):
+        self._metaschema_uri: Optional[URI] = metaschema_uri
+        """The metaschema associated with this document for validation."""
+
+        super().__init__(value, **kwargs)
+
+    @property
+    def has_metaschema(self) -> bool:
+        """Convenience method for when it is OK to not have a metaschema."""
+        return self._metaschema_uri is not None
+
+    @cached_property
+    def metaschema(self) -> Metaschema:
+        """The document's :class:`~jschon.vocabulary.Metaschema`."""
+        if (uri := self.metaschema_uri) is None:
+            raise self._metaschema_exc(
+                "The schema's metaschema URI has not been set",
+            )
+
+        return self.catalog.get_metaschema(uri)
+
+    @property
+    def metaschema_uri(self) -> Optional[URI]:
+        """The :class:`~jschon.uri.URI` identifying the schema's metaschema.
+
+        By default, if not defined on this (sub)document, the metaschema URI
+        is determined by the document root.
+
+        :class:`JSONSchemaContainer` does not define a mechanism for determining
+        a metaschema.  In particular, a "$schema" property in the root object
+        does **not** set a metaschema, as that convention is neither
+        standardized nor universal.
+        """
+        if self._metaschema_uri is not None:
+            return self._metaschema_uri
+        if self is not self.document_root:
+            return self.document_root.metaschema_uri
+
+
 class JSONSchema(CatalogedJSON):
     """JSON schema document model."""
 
-    # Note that _json_pointer_cls is set in the JSON base class
     _json_schema_exc: ClassVar[Type[JSONSchemaError]] = JSONSchemaError
     """Associated :class:`JSONSchemaError` subclass for general exceptions."""
 
@@ -76,7 +131,7 @@ class JSONSchema(CatalogedJSON):
 
         self.data: Union[bool, Dict[str, JSON]]
         """The schema data.
-        
+
         =========   ===============
         JSON type   data type
         =========   ===============
@@ -90,6 +145,9 @@ class JSONSchema(CatalogedJSON):
 
         self.key: Optional[str] = key
         """The index of the schema within its parent."""
+
+        self._metaschema_uri: Optional[URI] = metaschema_uri
+        """The metaschema associated with this document for validation."""
 
         if isinstance(value, bool):
             self.type = "boolean"
@@ -197,13 +255,6 @@ class JSONSchema(CatalogedJSON):
                     yield kwclass
                     break
 
-    def validate(self) -> Result:
-        """Validate the schema against its metaschema."""
-        return self.metaschema.evaluate(
-            self,
-            Result(self.metaschema, self, validating_with=self.metaschema),
-        )
-
     def evaluate(self, instance: JSON, result: Result = None) -> Result:
         """Evaluate a JSON document and return the evaluation result.
 
@@ -262,7 +313,7 @@ class JSONSchema(CatalogedJSON):
     @cached_property
     def parentschema(self) -> Optional[JSONSchema]:
         """The containing :class:`JSONSchema` instance.
-        
+
         Note that this is not necessarily the same as `self.parent`.
         """
         parent = self.parent
@@ -300,20 +351,10 @@ class JSONSchema(CatalogedJSON):
             ancestor = ancestor.parentschema
         return ancestor
 
-    @cached_property
-    def metaschema(self) -> Metaschema:
-        """The schema's :class:`~jschon.vocabulary.Metaschema`."""
-        if (uri := self.metaschema_uri) is None:
-            raise self._json_schema_exc(
-                "The schema's metaschema URI has not been set",
-            )
-
-        return self.catalog.get_metaschema(uri)
-
     @property
     def metaschema_uri(self) -> Optional[URI]:
         """The :class:`~jschon.uri.URI` identifying the schema's metaschema.
-        
+
         If not defined on this (sub)schema, the metaschema URI
         is determined by the parent schema.
         """
@@ -322,14 +363,10 @@ class JSONSchema(CatalogedJSON):
         if self.parentschema is not None:
             return self.parentschema.metaschema_uri
 
-    @metaschema_uri.setter
-    def metaschema_uri(self, value: Optional[URI]) -> None:
-        self._metaschema_uri = value
-
     @property
     def base_uri(self) -> Optional[URI]:
         """The schema's base :class:`~jschon.uri.URI`.
-        
+
         The base URI is obtained by searching up the schema tree
         for a schema URI, and removing any fragment.
         """
@@ -339,28 +376,9 @@ class JSONSchema(CatalogedJSON):
             return self.parentschema.base_uri
 
     @property
-    def uri(self) -> Optional[URI]:
-        """The :class:`~jschon.uri.URI` identifying the schema.
-
-        Used as the key for caching the schema in the catalog.
-        """
-        return self._uri
-
-    @uri.setter
-    def uri(self, value: Optional[URI]) -> None:
-        if self._uri != value:
-            if self._uri is not None:
-                self.catalog.del_schema(self._uri, cacheid=self.cacheid)
-
-            self._uri = value
-
-            if self._uri is not None:
-                self.catalog.add_schema(self._uri, self, cacheid=self.cacheid)
-
-    @property
     def canonical_uri(self) -> Optional[URI]:
         """The absolute location of the (sub)schema.
-        
+
         This is not necessarily an 'absolute URI', as it may contain
         a fragment.
         """
@@ -515,7 +533,7 @@ class Result:
 
     def pass_(self) -> None:
         """Mark the result as valid.
-        
+
         A result is initially valid, so this should only need
         to be called by a keyword when it must reverse a failure.
         """
@@ -532,7 +550,7 @@ class Result:
 
     def refschema(self, schema: JSONSchema) -> None:
         """Set the referenced schema for a by-reference keyword.
-        
+
         This ensures that :attr:`absolute_uri` returns the URI of the
         referenced schema rather than the referencing keyword.
         """
