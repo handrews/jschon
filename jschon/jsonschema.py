@@ -88,7 +88,6 @@ class JSONSchemaContainer(CatalogedJSON):
         self._metaschema_uri = value
 
 
-
 class JSONSchema(JSONSchemaContainer):
     """JSON schema document model."""
 
@@ -130,14 +129,19 @@ class JSONSchema(JSONSchemaContainer):
             on the relevant catalog.
         """
 
-        self._init_referencing(
+        self._init_catalog(
             value,
             parent=parent,
             catalog=catalog,
             cacheid=cacheid,
             uri=uri,
-            resolve_references=resolve_references,
         )
+
+        self.references_resolved: bool = False
+        """``True`` if all references have been resolved by walking all (sub)schemas."""
+
+        self._metaschema_uri: Optional[URI] = metaschema_uri
+        """The metaschema associated with this schema."""
 
         self.keywords: Dict[str, Keyword] = {}
         """A dictionary of the schema's :class:`~jschon.vocabulary.Keyword`
@@ -165,9 +169,6 @@ class JSONSchema(JSONSchemaContainer):
 
         self.key: Optional[str] = key
         """The index of the schema within its parent."""
-
-        self._metaschema_uri: Optional[URI] = metaschema_uri
-        """The metaschema associated with this document for validation."""
 
         if isinstance(value, bool):
             self.type = "boolean"
