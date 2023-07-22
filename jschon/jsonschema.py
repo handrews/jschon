@@ -30,8 +30,16 @@ class JSONSchemaContainer(CatalogedJSON):
     and/or within the embedded JSON Schema resources.
     """
 
+    _metaschema_cls: ClassVar[Type[Metaschema]]
+    """Associated Metaschema class"""
+
     _metaschema_exc: ClassVar[Type[JSONError]] = JSONError
     """Exception raised if no metaschema is present."""
+
+    @classmethod
+    def _set_metaschema_cls(cls) -> None:
+        from jschon.vocabulary import Metaschema
+        cls._metaschema_cls = Metaschema
 
     def __init__(
             self,
@@ -42,6 +50,9 @@ class JSONSchemaContainer(CatalogedJSON):
     ):
         self._metaschema_uri: Optional[URI] = metaschema_uri
         """The metaschema associated with this document for validation."""
+
+        if not hasattr(type(self), '_metaschema_exc'):
+            self._set_metaschema_cls()
 
         super().__init__(value, **kwargs)
 
@@ -150,6 +161,9 @@ class JSONSchema(JSONSchemaContainer):
 
         # do not call super().__init__
         # all inherited attributes are initialized here:
+
+        if not hasattr(type(self), '_metaschema_exc'):
+            self._set_metaschema_cls()
 
         self.type: str
         """The JSON type of the schema. One of ``"boolean"``, ``"object"``."""
