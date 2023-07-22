@@ -151,9 +151,6 @@ class Catalog:
     the :class:`URI` subclass used for identification and caching.
     """
 
-    _metaschema_cls: ClassVar[Type[Metaschema]] = Metaschema
-    """The :class:`Metaschema` subclass to instantiate when loading."""
-
     _catalog_exc: ClassVar[Type[CatalogError]] = CatalogError
     """The :class:`CatalogError` subclass to use for general exceptions."""
 
@@ -178,6 +175,7 @@ class Catalog:
         :param resolve_references: passed through to any
             :class:`~jschon.jsonschema.JSONSChema` constructor calls
         """
+        self._json_schema_cls._set_metaschema_cls()
         self.__class__._catalog_registry[name] = self
 
         self.name: str = name
@@ -314,7 +312,7 @@ class Catalog:
             self.get_vocabulary(vocab_uri)
             for vocab_uri in default_vocabulary_uris
         ]
-        metaschema = self._metaschema_cls(
+        metaschema = self._json_schema_cls._metaschema_cls(
             self,
             metaschema_doc,
             default_core_vocabulary,
@@ -353,7 +351,7 @@ class Catalog:
         if not metaschema:
             metaschema = self.create_metaschema(uri)
 
-        if not isinstance(metaschema, self._metaschema_cls):
+        if not isinstance(metaschema, self._json_schema_cls._metaschema_cls):
             raise self._catalog_exc(f"The schema referenced by {uri} is not a metaschema")
 
         return metaschema
@@ -461,12 +459,13 @@ class Catalog:
                         f"Schema not found for {uri}",
                     ) from e
 
-        if not isinstance(schema, cls):
+        m_cls = cls._metaschema_cls
+        if not isinstance(schema, (cls, m_cls)):
             raise self._catalog_exc(
                 f"The object referenced by {uri} is not an "
-                f"instance of '{cls.__module__}.{cls.__name__}'; "
-                f"it is an instance of "
-                f"'{type(schema).__module__}.{type(schema).__name__}'",
+                f"instance of '{cls.__module__}.{cls.__name__}' or "
+                f"'{m_cls.__module__}.{m_cls.__name__}'; it is an instance "
+                f"of '{type(schema).__module__}.{type(schema).__name__}'",
             )
 
         return schema
