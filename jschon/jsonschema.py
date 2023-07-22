@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from jschon.vocabulary import Keyword, KeywordClass, Metaschema
 
 __all__ = [
+    'JSONSchemaContainer',
     'JSONSchema',
     'JSONSchemaContainer',
     'Result',
