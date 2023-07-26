@@ -536,6 +536,12 @@ class CatalogedJSON(JSON):
             value, (Sequence, Mapping),
         )
         """``True`` if all references have been resolved by walking all (sub)documents."""
+
+        self._init_catalog(
+            catalog=catalog,
+            cacheid=cacheid,
+            uri=uri,
+        )
         super().__init__(
             value,
             parent=parent,
@@ -543,11 +549,7 @@ class CatalogedJSON(JSON):
             itemclass=itemclass,
             **itemkwargs,
         )
-        self._init_catalog(
-            catalog=catalog,
-            cacheid=cacheid,
-            uri=uri,
-        )
+
         if (
             isinstance(value, Mapping) and
             self.parent is None
