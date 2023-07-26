@@ -542,6 +542,13 @@ class CatalogedJSON(JSON):
         self._uri: Optional[URI]
         self._metaschema_uri: Optional[URI]
 
+        self._init_referencing(
+            catalog=catalog,
+            cacheid=cacheid,
+            uri=uri,
+            metaschema_uri=metaschema_uri,
+            resource_references=resolve_references,
+        )
         super().__init__(
             value,
             parent=parent,
@@ -549,13 +556,7 @@ class CatalogedJSON(JSON):
             itemclass=itemclass,
             **itemkwargs,
         )
-        self._init_referencing(
-            catalog,
-            cacheid,
-            uri,
-            metaschema_uri,
-            resolve_references,
-        )
+
         if (
             isinstance(value, Mapping) and
             self.parent is None
