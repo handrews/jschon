@@ -478,13 +478,6 @@ class JSON(MutableSequence['JSON'], MutableMapping[str, 'JSON']):
 
 
 class CatalogedJSON(JSON):
-    _uri_cls: ClassVar[Type[URI]] = URI
-    """Associated :class:`URI` subclass for identification and loading.
-
-    This class is used for schema and vocabulary lookups in the
-    :class:`jschon.catalog.Catalog` and in keyword implementations.
-    """
-
     _catalog_cls: ClassVar[Type[Catalog]]
     """Associated :class:`Catalog` subclass for registering and loading."""
 
