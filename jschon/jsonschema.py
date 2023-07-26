@@ -51,7 +51,7 @@ class JSONSchemaContainer(CatalogedJSON):
         self._metaschema_uri: Optional[URI] = metaschema_uri
         """The metaschema associated with this document for validation."""
 
-        if not hasattr(type(self), '_metaschema_exc'):
+        if not hasattr(type(self), '_metaschema_cls'):
             self._set_metaschema_cls()
 
         super().__init__(value, **kwargs)
