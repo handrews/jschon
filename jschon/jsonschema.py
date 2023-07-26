@@ -192,7 +192,7 @@ class JSONSchema(JSONSchemaContainer):
             self.data = {}
 
             if self.parent is None and self.uri is None:
-                self.uri = self._uri_cls(f'urn:uuid:{uuid4()}')
+                self.uri = URI(f'urn:uuid:{uuid4()}')
 
             self._bootstrap(value)
 
