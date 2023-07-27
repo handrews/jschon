@@ -76,7 +76,7 @@ class JSONSchema(CatalogedJSON):
 
         self.data: Union[bool, Dict[str, JSON]]
         """The schema data.
-        
+
         =========   ===============
         JSON type   data type
         =========   ===============
@@ -262,7 +262,7 @@ class JSONSchema(CatalogedJSON):
     @cached_property
     def parentschema(self) -> Optional[JSONSchema]:
         """The containing :class:`JSONSchema` instance.
-        
+
         Note that this is not necessarily the same as `self.parent`.
         """
         parent = self.parent
@@ -313,7 +313,7 @@ class JSONSchema(CatalogedJSON):
     @property
     def metaschema_uri(self) -> Optional[URI]:
         """The :class:`~jschon.uri.URI` identifying the schema's metaschema.
-        
+
         If not defined on this (sub)schema, the metaschema URI
         is determined by the parent schema.
         """
@@ -329,7 +329,7 @@ class JSONSchema(CatalogedJSON):
     @property
     def base_uri(self) -> Optional[URI]:
         """The schema's base :class:`~jschon.uri.URI`.
-        
+
         The base URI is obtained by searching up the schema tree
         for a schema URI, and removing any fragment.
         """
@@ -339,28 +339,9 @@ class JSONSchema(CatalogedJSON):
             return self.parentschema.base_uri
 
     @property
-    def uri(self) -> Optional[URI]:
-        """The :class:`~jschon.uri.URI` identifying the schema.
-
-        Used as the key for caching the schema in the catalog.
-        """
-        return self._uri
-
-    @uri.setter
-    def uri(self, value: Optional[URI]) -> None:
-        if self._uri != value:
-            if self._uri is not None:
-                self.catalog.del_schema(self._uri, cacheid=self.cacheid)
-
-            self._uri = value
-
-            if self._uri is not None:
-                self.catalog.add_schema(self._uri, self, cacheid=self.cacheid)
-
-    @property
     def canonical_uri(self) -> Optional[URI]:
         """The absolute location of the (sub)schema.
-        
+
         This is not necessarily an 'absolute URI', as it may contain
         a fragment.
         """
@@ -515,7 +496,7 @@ class Result:
 
     def pass_(self) -> None:
         """Mark the result as valid.
-        
+
         A result is initially valid, so this should only need
         to be called by a keyword when it must reverse a failure.
         """
@@ -532,7 +513,7 @@ class Result:
 
     def refschema(self, schema: JSONSchema) -> None:
         """Set the referenced schema for a by-reference keyword.
-        
+
         This ensures that :attr:`absolute_uri` returns the URI of the
         referenced schema rather than the referencing keyword.
         """

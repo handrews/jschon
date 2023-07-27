@@ -106,7 +106,7 @@ class JSON(MutableSequence['JSON'], MutableMapping[str, 'JSON']):
 
         self.data: Union[None, bool, int, float, str, List[JSON], Dict[str, JSON]]
         """The instance data.
-        
+
         =========   ===============
         JSON type   data type
         =========   ===============
@@ -529,19 +529,27 @@ class CatalogedJSON(JSON):
             itemclass: Type[JSON] = None,
             **itemkwargs: Any,
     ):
-        self._init_referencing(
-            catalog,
-            cacheid,
-            uri,
-            metaschema_uri,
-            resolve_references,
-        )
+
+        self.catalog: Catalog
+        """The catalog in which the schema is cached."""
+
+        self.cacheid: Hashable
+        """Schema cache identifier."""
+
+        self.references_resolved: bool
+        """``True`` if all references have been resolved by walking all (sub)schemas."""
         super().__init__(
             value,
             parent=parent,
             key=key,
             itemclass=itemclass,
             **itemkwargs,
+        )
+        self._init_referencing(
+            catalog,
+            cacheid,
+            uri,
+            resolve_references,
         )
         if (
             isinstance(value, Mapping) and
@@ -565,21 +573,44 @@ class CatalogedJSON(JSON):
         if not isinstance(catalog, self._catalog_cls):
             catalog = self._catalog_cls.get_catalog(catalog)
 
-        self.catalog: Catalog = catalog
-        """The catalog in which the schema is cached."""
-
-        self.cacheid: Hashable = cacheid
-        """Schema cache identifier."""
-
-        self.references_resolved: bool = False
-        """``True`` if all references have been resolved by walking all (sub)schemas."""
+        self.catalog = catalog
+        self.cacheid = cacheid
+        self.references_resolved = False
 
         if uri is not None:
             catalog.add_schema(uri, self, cacheid=cacheid)
-
         self._uri: Optional[URI] = uri
         self._metaschema_uri: Optional[URI] = metaschema_uri
 
 
     def resolve_references(self) -> None:
         raise NotImplementedError
+
+    @property
+    def base_uri(self) -> Optional[URI]:
+        """The schema's base :class:`~jschon.uri.URI`.
+
+        The base URI is obtained by any fragment from the document URI.
+        """
+        if self._uri is not None:
+            return self._uri.copy(fragment=False)
+        return self.document_root.base_uri
+
+    @property
+    def uri(self) -> Optional[URI]:
+        """The :class:`~jschon.uri.URI` identifying the schema.
+
+        Used as the key for caching the schema in the catalog.
+        """
+        return self._uri
+
+    @uri.setter
+    def uri(self, value: Optional[URI]) -> None:
+        if self._uri != value:
+            if self._uri is not None:
+                self.catalog.del_schema(self._uri, cacheid=self.cacheid)
+
+            self._uri = value
+
+            if self._uri is not None:
+                self.catalog.add_schema(self._uri, self, cacheid=self.cacheid)
