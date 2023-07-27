@@ -538,6 +538,10 @@ class CatalogedJSON(JSON):
 
         self.references_resolved: bool
         """``True`` if all references have been resolved by walking all (sub)schemas."""
+
+        self._uri: Optional[URI]
+        self._metaschema_uri: Optional[URI]
+
         super().__init__(
             value,
             parent=parent,
@@ -549,6 +553,7 @@ class CatalogedJSON(JSON):
             catalog,
             cacheid,
             uri,
+            metaschema_uri,
             resolve_references,
         )
         if (
@@ -579,9 +584,8 @@ class CatalogedJSON(JSON):
 
         if uri is not None:
             catalog.add_schema(uri, self, cacheid=cacheid)
-        self._uri: Optional[URI] = uri
-        self._metaschema_uri: Optional[URI] = metaschema_uri
-
+        self._uri = uri
+        self._metaschema_uri = metaschema_uri
 
     def resolve_references(self) -> None:
         raise NotImplementedError
