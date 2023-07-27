@@ -4,7 +4,6 @@ from collections import deque
 from contextlib import contextmanager
 from functools import cached_property
 from typing import Any, ClassVar, ContextManager, Dict, Hashable, Iterator, Mapping, Optional, TYPE_CHECKING, Tuple, Type, Union
-from uuid import uuid4
 
 from jschon.exceptions import JSONError, JSONSchemaError
 from jschon.json import CatalogedJSON, JSON, JSONCompatible
@@ -177,6 +176,8 @@ class JSONSchema(JSONSchemaContainer):
         """The index of the schema within its parent."""
 
         self._init_catalog(
+            value,
+            parent=parent,
             catalog=catalog,
             cacheid=cacheid,
             uri=uri,
@@ -190,9 +191,6 @@ class JSONSchema(JSONSchemaContainer):
         elif isinstance(value, Mapping):
             self.type = "object"
             self.data = {}
-
-            if self.parent is None and self.uri is None:
-                self.uri = URI(f'urn:uuid:{uuid4()}')
 
             self._bootstrap(value)
 
