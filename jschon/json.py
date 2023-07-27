@@ -5,6 +5,7 @@ from collections import deque
 from functools import cached_property
 from os import PathLike
 from typing import Any, ClassVar, Dict, Iterator, List, Mapping, MutableMapping, MutableSequence, Optional, Sequence, Type, Union
+from uuid import uuid4
 
 from jschon.uri import URI
 from jschon.exceptions import JSONError, JSONPointerError
@@ -543,6 +544,8 @@ class CatalogedJSON(JSON):
         self._metaschema_uri: Optional[URI]
 
         self._init_referencing(
+            value,
+            parent=parent,
             catalog=catalog,
             cacheid=cacheid,
             uri=uri,
@@ -566,11 +569,14 @@ class CatalogedJSON(JSON):
 
     def _init_referencing(
         self,
-        catalog,
-        cacheid,
-        uri,
-        metaschema_uri,
-        resolve_references,
+        value: JSONCompatible,
+        *,
+        parent: Optional[JSON],
+        catalog: Catalog,
+        cacheid: str,
+        uri: URI,
+        metaschema_uri: URI,
+        resolve_references: bool,
     ):
         cls = type(self)
         if not hasattr(cls, '_catalog_cls'):
@@ -587,6 +593,13 @@ class CatalogedJSON(JSON):
             catalog.add_schema(uri, self, cacheid=cacheid)
         self._uri = uri
         self._metaschema_uri = metaschema_uri
+
+        if (
+            parent is None and
+            self.uri is None and
+            isinstance(value, Mapping)
+        ):
+            self.uri = URI(f'urn:uuid:{uuid4()}')
 
     def resolve_references(self) -> None:
         raise NotImplementedError

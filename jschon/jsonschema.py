@@ -4,7 +4,6 @@ from collections import deque
 from contextlib import contextmanager
 from functools import cached_property
 from typing import Any, ClassVar, ContextManager, Dict, Hashable, Iterator, Mapping, Optional, TYPE_CHECKING, Tuple, Type, Union
-from uuid import uuid4
 
 from jschon.exceptions import JSONSchemaError
 from jschon.json import CatalogedJSON, JSON, JSONCompatible
@@ -62,7 +61,16 @@ class JSONSchema(CatalogedJSON):
             on each unresolved schema, or :meth:`~jschon.catalog.Catalog.resolve_references`
             on the relevant catalog.
         """
-        self._init_referencing(catalog, cacheid, uri, metaschema_uri, resolve_references)
+
+        self._init_referencing(
+            value,
+            parent=parent,
+            catalog=catalog,
+            cacheid=cacheid,
+            uri=uri,
+            metaschema_uri=metaschema_uri,
+            resolve_references=resolve_references,
+        )
 
         self.keywords: Dict[str, Keyword] = {}
         """A dictionary of the schema's :class:`~jschon.vocabulary.Keyword`
@@ -99,9 +107,6 @@ class JSONSchema(CatalogedJSON):
         elif isinstance(value, Mapping):
             self.type = "object"
             self.data = {}
-
-            if self.parent is None and self.uri is None:
-                self.uri = URI(f'urn:uuid:{uuid4()}')
 
             self._bootstrap(value)
 
