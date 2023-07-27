@@ -523,7 +523,6 @@ class CatalogedJSON(JSON):
             catalog: Union[str, Catalog] = 'catalog',
             cacheid: Hashable = 'default',
             uri: URI = None,
-            metaschema_uri: URI = None,
             parent: JSON = None,
             key: str = None,
             resolve_references: bool = True,
@@ -541,7 +540,6 @@ class CatalogedJSON(JSON):
         """``True`` if all references have been resolved by walking all (sub)schemas."""
 
         self._uri: Optional[URI]
-        self._metaschema_uri: Optional[URI]
 
         self._init_referencing(
             value,
@@ -549,7 +547,6 @@ class CatalogedJSON(JSON):
             catalog=catalog,
             cacheid=cacheid,
             uri=uri,
-            metaschema_uri=metaschema_uri,
             resource_references=resolve_references,
         )
         super().__init__(
@@ -575,7 +572,6 @@ class CatalogedJSON(JSON):
         catalog: Catalog,
         cacheid: str,
         uri: URI,
-        metaschema_uri: URI,
         resolve_references: bool,
     ):
         cls = type(self)
@@ -592,7 +588,6 @@ class CatalogedJSON(JSON):
         if uri is not None:
             catalog.add_schema(uri, self, cacheid=cacheid)
         self._uri = uri
-        self._metaschema_uri = metaschema_uri
 
         if (
             parent is None and

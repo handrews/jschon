@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from functools import cached_property
 from typing import Any, ClassVar, ContextManager, Dict, Hashable, Iterator, Mapping, Optional, TYPE_CHECKING, Tuple, Type, Union
 
-from jschon.exceptions import JSONSchemaError
+from jschon.exceptions import JSONError, JSONSchemaError
 from jschon.json import CatalogedJSON, JSON, JSONCompatible
 from jschon.jsonpointer import JSONPointer
 from jschon.uri import URI
@@ -16,14 +16,82 @@ if TYPE_CHECKING:
 
 __all__ = [
     'JSONSchema',
+    'JSONSchemaContainer',
     'Result',
 ]
 
 
-class JSONSchema(CatalogedJSON):
+class JSONSchemaContainer(CatalogedJSON):
+    """Base class for documents that either are or embed JSON Schemas.
+
+    This type of document supports associating a metaschema and using
+    :meth:`validate` in order to support switching metaschemas for
+    and/or within the embedded JSON Schema resources.
+    """
+
+    _metaschema_exc: ClassVar[Type[JSONError]] = JSONError
+    """Exception raised if no metaschema is present."""
+
+    def __init__(
+            self,
+            value: Union[bool, Mapping[str, JSONCompatible]],
+            *,
+            metaschema_uri: URI = None,
+            **kwargs: Any,
+    ):
+        self._metaschema_uri: Optional[URI] = metaschema_uri
+        """The metaschema associated with this document for validation."""
+
+        super().__init__(value, **kwargs)
+
+    def validate(self) -> Result:
+        """Validate the schema against its metaschema."""
+        return self.metaschema.evaluate(
+            self,
+            Result(self.metaschema, self, validating_with=self.metaschema),
+        )
+
+    @property
+    def has_metaschema(self) -> bool:
+        """Convenience method for when it is OK to not have a metaschema."""
+        return self._metaschema_uri is not None
+
+    @cached_property
+    def metaschema(self) -> Metaschema:
+        """The document's :class:`~jschon.vocabulary.Metaschema`."""
+        if (uri := self.metaschema_uri) is None:
+            raise self._metaschema_exc(
+                "The schema's metaschema URI has not been set",
+            )
+
+        return self.catalog.get_metaschema(uri)
+
+    @property
+    def metaschema_uri(self) -> Optional[URI]:
+        """The :class:`~jschon.uri.URI` identifying the schema's metaschema.
+
+        By default, if not defined on this (sub)document, the metaschema URI
+        is determined by the document root.
+
+        :class:`JSONSchemaContainer` does not define a mechanism for determining
+        a metaschema.  In particular, a "$schema" property in the root object
+        does **not** set a metaschema, as that convention is neither
+        standardized nor universal.
+        """
+        if self._metaschema_uri is not None:
+            return self._metaschema_uri
+        if self is not self.document_root:
+            return self.document_root.metaschema_uri
+
+    @metaschema_uri.setter
+    def metaschema_uri(self, value: Optional[URI]) -> None:
+        self._metaschema_uri = value
+
+
+
+class JSONSchema(JSONSchemaContainer):
     """JSON schema document model."""
 
-    # Note that _json_pointer_cls is set in the JSON base class
     _json_schema_exc: ClassVar[Type[JSONSchemaError]] = JSONSchemaError
     """Associated :class:`JSONSchemaError` subclass for general exceptions."""
 
@@ -68,7 +136,6 @@ class JSONSchema(CatalogedJSON):
             catalog=catalog,
             cacheid=cacheid,
             uri=uri,
-            metaschema_uri=metaschema_uri,
             resolve_references=resolve_references,
         )
 
@@ -98,6 +165,9 @@ class JSONSchema(CatalogedJSON):
 
         self.key: Optional[str] = key
         """The index of the schema within its parent."""
+
+        self._metaschema_uri: Optional[URI] = metaschema_uri
+        """The metaschema associated with this document for validation."""
 
         if isinstance(value, bool):
             self.type = "boolean"
@@ -202,13 +272,6 @@ class JSONSchema(CatalogedJSON):
                     yield kwclass
                     break
 
-    def validate(self) -> Result:
-        """Validate the schema against its metaschema."""
-        return self.metaschema.evaluate(
-            self,
-            Result(self.metaschema, self, validating_with=self.metaschema),
-        )
-
     def evaluate(self, instance: JSON, result: Result = None) -> Result:
         """Evaluate a JSON document and return the evaluation result.
 
@@ -304,16 +367,6 @@ class JSONSchema(CatalogedJSON):
         while ancestor.parentschema:
             ancestor = ancestor.parentschema
         return ancestor
-
-    @cached_property
-    def metaschema(self) -> Metaschema:
-        """The schema's :class:`~jschon.vocabulary.Metaschema`."""
-        if (uri := self.metaschema_uri) is None:
-            raise self._json_schema_exc(
-                "The schema's metaschema URI has not been set",
-            )
-
-        return self.catalog.get_metaschema(uri)
 
     @property
     def metaschema_uri(self) -> Optional[URI]:
