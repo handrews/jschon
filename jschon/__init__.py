@@ -30,6 +30,7 @@ __version__ = '0.11.1'
 def create_catalog(
     *versions: str,
     name: str = 'catalog',
+    resolve_references: bool = True,
     cls: Type[Catalog] = Catalog,
 ) -> Catalog:
     """Create and return a :class:`~jschon.catalog.Catalog` instance,
@@ -38,12 +39,17 @@ def create_catalog(
 
     :param versions: Any of ``2019-09``, ``2020-12``, ``next``.
     :param name: A unique name for the :class:`~jschon.catalog.Catalog` instance.
+    :param resolve_references: Passed through to any calls made to the
+        :class:`~jschon.jsonschema.JSONSchema` constructor; defaults to ``True``;
+        if set to ``False`` a separate call to
+        :meth:`~jschon.catalog.Catalog.resolve_references` is required prior to
+        evaluating any schemas.
     :param cls: The sublcass of `~jschon.catalog.Catalog` to initiate.
     :raise ValueError: If any of `versions` is unrecognized.
     """
     from .catalog import _2019_09, _2020_12, _next
 
-    catalog = cls(name=name)
+    catalog = cls(name=name, resolve_references=resolve_references)
 
     version_initializers = {
         '2019-09': _2019_09.initialize,
