@@ -12,6 +12,7 @@ from jschon.jsonpointer import JSONPointer
 from jschon.utils import json_dumpf, json_dumps, json_loadf, json_loadr, json_loads
 
 __all__ = [
+    'CatalogedJSON',
     'JSON',
     'JSONCompatible',
     'null',

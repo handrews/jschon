@@ -8,7 +8,7 @@ from os import PathLike
 from typing import Any, ContextManager, Dict, Hashable, Set, Union
 
 from jschon.exceptions import CatalogError, JSONPointerError, URIError
-from jschon.json import JSONCompatible
+from jschon.json import JSONCompatible, CatalogedJSON
 from jschon.jsonpointer import JSONPointer
 from jschon.jsonschema import JSONSchema
 from jschon.uri import URI
