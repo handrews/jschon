@@ -5,6 +5,7 @@ from collections import deque
 from functools import cached_property
 from os import PathLike
 from typing import Any, ClassVar, Dict, Iterator, List, Mapping, MutableMapping, MutableSequence, Optional, Sequence, Type, Union
+from uuid import uuid4
 
 from jschon.uri import URI
 from jschon.exceptions import JSONError, JSONPointerError
@@ -512,6 +513,8 @@ class CatalogedJSON(JSON):
         """``True`` if all references have been resolved by walking all (sub)documents."""
 
         self._init_catalog(
+            value,
+            parent=parent,
             catalog=catalog,
             cacheid=cacheid,
             uri=uri,
@@ -533,10 +536,12 @@ class CatalogedJSON(JSON):
 
     def _init_catalog(
         self,
+        value: JSONCompatible,
         *,
         catalog: Catalog,
         cacheid: str,
         uri: URI,
+        parent: Optional[JSON] = None,
     ):
         cls = type(self)
         if not hasattr(cls, '_catalog_cls'):
@@ -550,6 +555,8 @@ class CatalogedJSON(JSON):
 
         if uri is not None:
             catalog.add_schema(uri, self, cacheid=cacheid)
+        elif isinstance(value, Mapping) and parent is None:
+            uri = URI(f'urn:uuid:{uuid4()}')
         self._uri: Optional[URI] = uri
 
     def resolve_references(self) -> None:
