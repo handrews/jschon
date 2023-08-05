@@ -115,16 +115,7 @@ class JSONSchema(JSONFormat):
 
         if self.type == "object":
             self._bootstrap(value)
-            kwclasses = {
-                key: kwclass for key in value
-                if (key not in self.keywords and  # skip bootstrapped keywords
-                    (kwclass := self.metaschema.get_kwclass(key)))
-            }
-
-            for kwclass in self._resolve_dependencies(kwclasses):
-                kw = kwclass(self, value[(key := kwclass.key)])
-                self.keywords[key] = kw
-                self.data[key] = kw.json
+            self.data = self.instantiate_mapping(value)
 
         if self.parent is None and self._auto_resolve_references:
             self.resolve_references()
@@ -213,6 +204,22 @@ class JSONSchema(JSONFormat):
 
     def get_subschema_cls(self):
         return JSONSchema
+
+    def instantiate_mapping(
+        self,
+        value: Mapping[JSONCompatible],
+    ) -> Mapping[JSON]:
+        kwclasses = {
+            key: kwclass for key in value
+            if (key not in self.keywords and  # skip bootstrapped keywords
+                (kwclass := self.metaschema.get_kwclass(key)))
+        }
+
+        for kwclass in self._resolve_dependencies(kwclasses):
+            kw = kwclass(self, value[(key := kwclass.key)])
+            self.keywords[key] = kw
+            self.data[key] = kw.json
+        return self.data
 
     def initial_validation_result(self, instance):
         return Result(self, instance, validating_with=self)
