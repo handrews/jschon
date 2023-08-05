@@ -106,17 +106,7 @@ class JSONSchema(JSON):
                 self.uri = URI(f'urn:uuid:{uuid4()}')
 
             self._bootstrap(value)
-
-            kwclasses = {
-                key: kwclass for key in value
-                if (key not in self.keywords and  # skip bootstrapped keywords
-                    (kwclass := self.metaschema.get_kwclass(key)))
-            }
-
-            for kwclass in self._resolve_dependencies(kwclasses):
-                kw = kwclass(self, value[(key := kwclass.key)])
-                self.keywords[key] = kw
-                self.data[key] = kw.json
+            self.data = self.instantiate_mapping(value)
 
             if self.parent is None:
                 self._resolve_references()
@@ -187,6 +177,22 @@ class JSONSchema(JSON):
     def validate(self) -> Result:
         """Validate the schema against its metaschema."""
         return self.metaschema.evaluate(self)
+
+    def instantiate_mapping(
+        self,
+        value: Mapping[JSONCompatible],
+    ) -> Mapping[JSON]:
+        kwclasses = {
+            key: kwclass for key in value
+            if (key not in self.keywords and  # skip bootstrapped keywords
+                (kwclass := self.metaschema.get_kwclass(key)))
+        }
+
+        for kwclass in self._resolve_dependencies(kwclasses):
+            kw = kwclass(self, value[(key := kwclass.key)])
+            self.keywords[key] = kw
+            self.data[key] = kw.json
+        return self.data
 
     def evaluate(self, instance: JSON, result: Result = None) -> Result:
         """Evaluate a JSON document and return the evaluation result.
