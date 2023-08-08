@@ -59,7 +59,6 @@ class ResourceMixin:
         self,
         catalog_uri: Optional[URI] = None,
         content_uri: Optional[URI] = None,
-        initial_base_uri: Optional[URI] = None,
         source_url: Optional[URL] = None,
         source_metadata: Optional[Dict] = None,
         catalog: Union[Catalog, str] = 'catalog',
@@ -157,28 +156,30 @@ class ResourceMixin:
         self._catalog = catalog
         self._cacheid = cacheid
 
-        if initial_base_uri is not None and not initial_base_uri.is_absolute():
-            raise ValueError(
-                f"If provided, initial_base_uri <{initial_base_uri}> must be "
-                "an absolute-URI (with a scheme, and without a fragment)"
-            )
-
         if catalog_uri is not None and not catalog_uri.has_absolute_base():
             raise ValueError(
                 f"If provided, catalog_uri <{catalog_uri}> must begin "
                 "with a scheme!"
             )
 
-        if content_uri is not None and content_uri.has_absolute_base():
-                if initial_base_uri is not None:
-                    content_uri = content_uri.resolve(initial_base_uri)
-                elif catalog_uri is not None:
-                    content_uri = content_uri.resolve(catalog_uri)
-                else:
-                    raise ValueError(
-                        f"Cannot resolve relative URI reference
-                        <{content_uri}> without a base URI!"
-                    )
+        if content_uri is not None and not content_uri.has_absolute_base():
+            if catalog_uri is not None:
+                content_uri = content_uri.resolve(catalog_uri)
+            else:
+                raise ValueError(
+                    f"Cannot resolve relative URI reference
+                    <{content_uri}> without a base URI!"
+                )
+
+        if catalog_uri is None:
+            catalog_uri = content_uri if content_uri \
+                else URI(f'urn:uuid:{uuid4()}') 
+
+        frag = catalog_uri.fragment
+        if frag is None or (frag != '' and frag[0] != '/'):
+            catalog.add_schema(catalog_uri, self, cacheid=cacheid)
+        self._uri = catalog_uri
+
         register = False
         auto_uri = False
         if catalog_uri is None:
