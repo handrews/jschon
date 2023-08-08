@@ -10,6 +10,7 @@ Catalog
 * :class:`~jschon.catalog.Catalog`
 * :class:`~jschon.catalog.LocalSource`
 * :class:`~jschon.catalog.RemoteSource`
+* :class:`~jschon.resource.ResourceMixin`
 
 JSON
 ^^^^
