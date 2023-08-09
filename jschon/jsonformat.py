@@ -1,5 +1,9 @@
+from __future__ import annotations
+
+from contextlib import contextmanager
 from functools import cached_property
 from typing import Protocol
+
 from jschon import JSON
 from jschon.resource import JSONResource
 
@@ -8,6 +12,15 @@ __all__ = [
     'EvaluableJSONResult',
     'JSONFormat',
 ]
+
+
+class EvaluableJSON(Protocol):
+    def evaluate(
+        self,
+        instance: JSON,
+        result: EvaluableJSONResult,
+    ) -> EvaluableJSONResult:
+        ...
 
 class EvaluableJSONResult(Protocol):
     @contextmanager
@@ -31,15 +44,6 @@ class EvaluableJSONResult(Protocol):
         ...
 
     def output(self, format: str, **kwargs: Any) -> JSONCompatible:
-        ...
-
-
-class EvaluableJSON(Protocol):
-    def evaluate(
-        self,
-        instance: JSON,
-        result: EvaluableJSONResult,
-    ) -> EvaluableJSONResult:
         ...
 
 class JSONFormat(JSONResource):
@@ -89,7 +93,7 @@ class JSONFormat(JSONResource):
     def is_format_root(self):
         return self.parent_in_format is None
 
-    def validate(self) -> Result:
+    def validate(self) -> EvaluableJSONResult:
         """Validate the schema against its metaschema."""
         return self.metadocument.evaluate(self)
 
