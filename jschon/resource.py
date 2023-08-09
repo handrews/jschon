@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from typing import Any, ContextManager, Dict, Hashable, Iterator, Mapping, Optional, TYPE_CHECKING, Tuple, Type, Union
 
-from jschon import JSON
+from jschon import JSON, URI
 from jschon.exc import JschonError
 
 if TYPE_CHECKING:
@@ -35,7 +35,7 @@ class RelativeResourceURIError(ResourceError):
     """Raised when attempting to set a URI to a relative URI-reference without an available base URI."""
 
 
-@dataclass(init=False, frozen=True)
+@dataclass(frozen=True)
 class ResourceURIs:
     """Data structure for organizing URIs by use case."""
 
@@ -107,8 +107,7 @@ class JSONResource(JSON):
             itemclass=itemclass,
             **itemkwargs,
         )
-        r = self.resource_root
-        self.init_resource(uri, catalog=catalog, cacheid=cacheid)
+        # self.init_resource(uri, catalog=catalog, cacheid=cacheid)
         if parent is None and resolve_references:
             self.resolve_references()
 
@@ -149,7 +148,7 @@ class JSONResource(JSON):
 
 
         try:
-            self.parent, self.path, self.resource_root
+            self.parent, self.path, self.document_root, self.resource_root
         except AttributeError:
             raise ResourceNotReadyError()
 
@@ -158,6 +157,9 @@ class JSONResource(JSON):
             catalog = Catalog.get_catalog(catalog)
 
         self._uri: Optional[URI] = None
+        self._catalog_uri: Optional[URI] = None
+        self._base_uri: Optional[URI] = None
+
         self.catalog: Catalog = catalog
         self.cacheid: Hashable = cacheid
         self.references_resolved: bool = False
@@ -225,6 +227,7 @@ class JSONResource(JSON):
                 pointer_uri=uri.copy(fragment=''),
                 base_uri=uri,
             )
+
         if fragment == '':
             absolute_uri = uri.copy(fragment=None)
             return ResourceURIs(
@@ -266,15 +269,15 @@ class JSONResource(JSON):
 
         The parent-in-resource may be of a different 
         """
+        return self.parent
         candidate = None
-        node = self
+        current = self
 
-        # Note:  Cannot use bool(node.parent) during document construction.
-        while (next_candidate := node.parent) is not None:
-            if isinstance(next_candidate, JSONResource):
-                candidate = next_candidate
-            node = next_candidate
-        return candidate
+        while (candidate := current.parent) is not None:
+            if isinstance(candidate, JSONResource):
+                return candidate
+            current = candidate
+        return current
 
     @property
     def resource_root(self) -> JSONResource:
