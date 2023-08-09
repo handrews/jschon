@@ -112,12 +112,13 @@ class JSONResource(JSON):
         if parent is None and resolve_references:
             self.resolve_references()
 
-    def init_resource(
+    def _pre_recursion_init(
         self,
+        *args,
         uri: Optional[URI] = None,
-        *,
         catalog: Union[Catalog, str] = 'catalog',
         cacheid: Hashable = 'default',
+        **kwargs,
     ):
         """
         Configure identifiers and register with the catalog if needed.
@@ -156,16 +157,17 @@ class JSONResource(JSON):
             from jschon.catalog import Catalog
             catalog = Catalog.get_catalog(catalog)
 
+        self._uri: Optional[URI] = None
         self.catalog: Catalog = catalog
         self.cacheid: Hashable = cacheid
         self.references_resolved: bool = False
-
+        
         # TODO: Support an initial base URI.  In practice this is
         #       not currently needed as relative "$id"s are handled
         #       after initialization.
-        if not uri.has_absolute_base():
+        if uri is not None and not uri.has_absolute_base():
             raise RelativeResourceURIError()
-
+        assert hasattr(self, '_uri')
         self.uri = uri
 
         frag = self._uri.fragment
@@ -277,7 +279,7 @@ class JSONResource(JSON):
     @property
     def resource_root(self) -> JSONResource:
         candidate = self
-        while next_candidate := candidate.parent_in_resource:
+        while (next_candidate := candidate.parent_in_resource) is not None:
             if next_candidate.is_resource_root():
                 return next_candidate
             candidate = next_candidate
