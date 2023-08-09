@@ -117,6 +117,14 @@ class JSON(MutableSequence['JSON'], MutableMapping[str, 'JSON']):
         self.itemkwargs: Dict[str, Any] = itemkwargs
         """Keyword arguments to the :attr:`itemclass` constructor."""
 
+        self._pre_recursion_init(
+            value,
+            parent=parent,
+            key=key,
+            itemclass=itemclass,
+            **itemkwargs,
+        )
+
         if value is None:
             self.type = "null"
             self.data = None
@@ -149,6 +157,17 @@ class JSON(MutableSequence['JSON'], MutableMapping[str, 'JSON']):
 
         else:
             raise TypeError(f"{value=} is not JSON-compatible")
+
+    def _pre_recursion_init(
+        self,
+        value: JSONCompatible,
+        *,
+        parent: JSON = None,
+        key: str = None,
+        itemclass: Type[JSON] = None,
+        **itemkwargs: Any,
+    ) -> None:
+        pass
 
     @cached_property
     def path(self) -> JSONPointer:
