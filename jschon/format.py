@@ -3,6 +3,12 @@ from typing import Protocol
 from jschon import JSON
 from jschon.resource import JSONResource
 
+__all__ = [
+    'EvaluableJSON',
+    'EvaluableJSONResult',
+    'JSONFormat',
+]
+
 class EvaluableJSONResult(Protocol):
     @contextmanager
     def __call__(
