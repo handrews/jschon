@@ -129,6 +129,21 @@ class JSONResource(JSON):
         itemclass: Type[JSON] = None,
         **itemkwargs: Any,
     ) -> None:
+        self.references_resolved = False
+
+        self._uri: Optional[URI] = None
+        self._pointer_uri: Optional[URI] = None
+        self._base_uri: Optional[URI] = None
+        self._additional_uris: FrozenSet[URI] = frozenset()
+
+        # Intended for use by _pre_recursion_init() while avoiding
+        # requiring the JSON class to know about URIs in order to
+        # properly calculate child URIs from parent URIs.
+        #
+        # TODO: Should there be a more general "prep itemkwargs"
+        #       hook for handling such things?
+        self._tentative_uri: Optional[URI] = uri
+
         if itemclass is None:
             itemclass = JSONResource
         super().__init__(
@@ -139,11 +154,10 @@ class JSONResource(JSON):
             # The remaing args are received by JSON in **itemkwargs
             catalog=catalog,
             cacheid=cacheid,
-            uri=uri,
-            additional_uris=frozenset(),
-            resolve_references=resolve_references,
             **itemkwargs,
         )
+        self.additional_uris |= additional_uris
+        
         # self.init_resource(uri, catalog=catalog, cacheid=cacheid)
         if parent is None and resolve_references:
             self.resolve_references()
@@ -151,8 +165,6 @@ class JSONResource(JSON):
     def _pre_recursion_init(
         self,
         *args,
-        uri: Optional[URI] = None,
-        additional_uris: Sequence[URI] = frozenset(),
         catalog: Union[Catalog, str] = 'catalog',
         cacheid: Hashable = 'default',
         **kwargs,
@@ -192,11 +204,6 @@ class JSONResource(JSON):
             from jschon.catalog import Catalog
             catalog = Catalog.get_catalog(catalog)
 
-        self._uri: Optional[URI] = None
-        self._pointer_uri: Optional[URI] = None
-        self._base_uri: Optional[URI] = None
-        self._additional_uris: FrozenSet[URI] = frozenset()
-
         self.catalog: Catalog = catalog
         self.cacheid: Hashable = cacheid
         self.references_resolved: bool = False
@@ -204,11 +211,12 @@ class JSONResource(JSON):
         # TODO: Support an initial base URI.  In practice this is
         #       not currently needed as relative "$id"s are handled
         #       after initialization.
+        # TODO: Done?
+        uri = self._tentative_uri
         if uri is not None and not uri.has_absolute_base():
             raise RelativeResourceURIError()
         assert hasattr(self, '_uri')
         self.uri = uri
-        self.addition_uris = self.additional_uris | additional_uris
 
         frag = self._uri.fragment
         if frag in (None, '') or (frag[0] != '/'):
