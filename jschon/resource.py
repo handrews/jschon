@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import uuid4
 
-from typing import Any, ContextManager, Dict, FrozenSet, Hashable, Iterator, Mapping, Optional, Set, TYPE_CHECKING, Tuple, Type, Union
+from typing import Any, ContextManager, Dict, FrozenSet, Generator, Hashable, Iterator, Mapping, Optional, Set, TYPE_CHECKING, Tuple, Type, Union
 
 from jschon.exc import JschonError
 from jschon.json import JSON
@@ -334,6 +334,46 @@ class JSONResource(JSON):
             current = candidate
         return current
 
+    @classmethod
+    def _find_child_resource_nodes(cls, node) -> Generator[Tuple[Hashable, JSONResource]]:
+        """Returns in-resource nodes including roots of embedded resources.
+
+        Implemented as a class method due to intervening non-resource nodes.
+        """
+        if node.type == 'object':
+            child_iter = node.data.items()
+        elif node.type == 'array':
+            child_iter = enumerate(node.data)
+        else:
+            return
+
+        for key, child in child_iter:
+            if isinstance(child, JSONResource):
+                yield key, child
+            else:
+                yield from cls._find_child_resource_nodes(child)
+
+    @property
+    def child_resource_nodes(self) -> Generator[Tuple[Hashable, JSONResource]]:
+        yield from self._find_child_resource_nodes(self)
+
+    @property
+    def child_resource_roots(self) -> Generator[Tuple[Hashable, JSONResource]]:
+        yield from (
+            (key, child)
+            for key, child in self._find_child_resource_nodes(self)
+            if child.is_resource_root()
+        )
+
+    @property
+    def children_in_resource(self) -> Generator[Tuple[Hashable, JSONResource]]:
+        """Chidren one in-resource level down, in the same resource."""
+        yield from (
+            (key, child)
+            for key, child in self._find_child_resource_nodes(self)
+            if not child.is_resource_root()
+        )
+
     @property
     def resource_root(self) -> JSONResource:
         candidate = self
@@ -394,29 +434,33 @@ class JSONResource(JSON):
     @uri.setter
     def uri(self, uri: Optional[URI]) -> None:
         uris = ResourceURIs.uris_for(self, uri)
+        old_uri = self._uri
+        old_base = self._base_uri
+
+        self._uri = uris.property_uri
+        self._base_uri = uris.base_uri
+        self._pointer_uri = uris.pointer_uri
+
+        # TODO: Might we ever want to unregister existing additional URIs?
+        self.additional_uris = self.additional_uris | uris.additional_uris
+
         if self.is_resource_root():
-            if self._base_uri is not None and self.base_uri != uris.base_uri:
-                # TODO: update children
-                #       how to handle children with non-JSON Pointer URIs?
-                raise NotImplementedError
-        elif self._base_uri is not None and self._base_uri != uris.base_uri:
+            if old_base is not None and old_base != self.base_uri:
+                for key, child in self.children_in_resource:
+                    child.uri = self.base_uri.copy(fragment=child.uri.fragment)
+
+        elif self.parent.base_uri != uris.base_uri:
+            print(f'<{old_base}> != <{uris.base_uri}>')
             raise BaseURIConflictError()
 
         if uris.register_uri:
-            if self._uri is not None and self._uri != uris.property_uri:
-                self.catalog.del_resource(self._uri, cacheid=self.cacheid)
+            if old_uri is not None and old_uri != uris.property_uri:
+                self.catalog.del_resource(old_uri, cacheid=self.cacheid)
             self.catalog.add_resource(
                 uris.property_uri,
                 self,
                 cacheid=self.cacheid,
             )
-
-        self._uri = uris.property_uri
-        self._pointer_uri = uris.pointer_uri
-        self._base_uri = uris.base_uri
-
-        # TODO: Might we ever want to unregister existing additional URIs?
-        self.additional_uris = self.additional_uris | uris.additional_uris
 
     @property
     def additional_uris(self) -> FrozenSet[URI]:

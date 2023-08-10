@@ -2,7 +2,7 @@ import urllib.parse
 
 import pytest
 
-from jschon import Catalog, create_catalog, JSON, JSONPointer, URI
+from jschon import Catalog, CatalogError, create_catalog, JSON, JSONPointer, URI
 from jschon.resource import (
     JSONResource,
     ResourceURIs,
@@ -294,3 +294,26 @@ def mixed_document():
     assert root_node['plain_node']['resource_node'].path == JSONPointer('/plain_node/resource_node')
 
     return root_node
+
+
+def test_reassign_root_uri_with_children(catalog):
+    original = URI('tag:example.com,2023:one')
+    new = URI('tag:example.com,2023:two')
+    r = JSONResource({'foo': 'bar'}, uri=original)
+    r.uri = new
+
+    assert r.uri == new
+    assert r.pointer_uri == new.copy(fragment='')
+    assert r.base_uri == new
+    assert r.additional_uris == frozenset()
+    assert catalog.get_resource(new) is r
+    with pytest.raises(CatalogError):
+        catalog.get_resource(original)
+
+    assert r['foo'].uri == new.copy(fragment='/foo')
+    assert r['foo'].pointer_uri == r['foo'].uri
+    assert r['foo'].base_uri == r.base_uri
+    assert r['foo'].additional_uris == frozenset()
+    assert catalog.get_resource(r['foo'].uri) is r['foo']
+    with pytest.raises(CatalogError):
+        catalog.get_resource(original.copy(fragment='/foo'))
