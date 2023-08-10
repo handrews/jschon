@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import cached_property
 from uuid import uuid4
 
 from typing import Any, ContextManager, Dict, FrozenSet, Generator, Hashable, Iterator, Mapping, Optional, Set, TYPE_CHECKING, Tuple, Type, Union
@@ -53,9 +54,6 @@ class ResourceURIs:
     property_uri: URI
     """The URI to return from the :attr:`uri` property."""
 
-    pointer_uri: URI
-    """The URI consisting of the base URI plus a JSON Pointer fragment."""
-
     base_uri: URI
     """The base URI for the resource."""
 
@@ -96,7 +94,6 @@ class ResourceURIs:
                 return ResourceURIs(
                     register_uri=True,
                     property_uri=urn,
-                    pointer_uri=urn.copy(fragment=''),
                     base_uri=urn,
                     additional_uris=set(),
                 )
@@ -105,7 +102,6 @@ class ResourceURIs:
             return ResourceURIs(
                 register_uri=False,
                 property_uri=ptr_uri,
-                pointer_uri=ptr_uri,
                 base_uri=node.resource_root.base_uri,
                 additional_uris=set(),
             )
@@ -115,7 +111,6 @@ class ResourceURIs:
             return ResourceURIs(
                 register_uri=True,
                 property_uri=uri,
-                pointer_uri=uri.copy(fragment=''),
                 base_uri=uri,
                 additional_uris=set(),
             )
@@ -125,7 +120,6 @@ class ResourceURIs:
             return ResourceURIs(
                 register_uri=True,
                 property_uri=absolute_uri,
-                pointer_uri=uri,
                 base_uri=absolute_uri,
                 additional_uris=set(),
             )
@@ -134,7 +128,6 @@ class ResourceURIs:
             return ResourceURIs(
                 register_uri=False,
                 property_uri=uri,
-                pointer_uri=uri,
                 base_uri=uri.copy(fragment=None),
                 additional_uris=set(),
             )
@@ -145,7 +138,6 @@ class ResourceURIs:
             return ResourceURIs(
                 register_uri=True,
                 property_uri=absolute,
-                pointer_uri=uri.copy(fragment=''),
                 base_uri=absolute,
                 additional_uris={uri},
             )
@@ -155,7 +147,6 @@ class ResourceURIs:
         return ResourceURIs(
             register_uri=True,
             property_uri=uri,
-            pointer_uri=ptr_uri,
             base_uri=ptr_uri.copy(fragment=None),
             additional_uris=set(),
         )
@@ -233,7 +224,6 @@ class JSONResource(JSON):
         self.references_resolved = False
 
         self._uri: Optional[URI] = None
-        self._pointer_uri: Optional[URI] = None
         self._base_uri: Optional[URI] = None
         self._additional_uris: FrozenSet[URI] = frozenset()
 
@@ -443,7 +433,6 @@ class JSONResource(JSON):
 
         self._uri = uris.property_uri
         self._base_uri = uris.base_uri
-        self._pointer_uri = uris.pointer_uri
 
         # TODO: Might we ever want to unregister existing additional URIs?
         self.additional_uris = self.additional_uris | uris.additional_uris
@@ -510,16 +499,26 @@ class JSONResource(JSON):
 
         self._additional_uris = frozenset(uris)
 
-    @property
+    def _invalidate_path(self) -> None:
+        super()._invalidate_path()
+        try:
+            uri_is_pointer_uri = self.pointer_uri == self.uri
+            del self.pointer_uri
+
+            if uri_is_pointer_uri:
+                self.uri = self.pointer_uri
+
+        except (ResourceNotReadyError, AttributeError):
+            pass
+
+    @cached_property
     def pointer_uri(self) -> URI:
         """The URI of this node using its base URI and a JSON Pointer fragment.
 
         This property is similar to JSON Schema's "canonical URI", but
         is unambiguous and consistent with respect to fragments.
         """
-        if self._pointer_uri is None:
-            raise ResourceURINotSetError()
-        return self._pointer_uri
+        return ResourceURIs.pointer_uri_for(self)
 
     @property
     def base_uri(self):
