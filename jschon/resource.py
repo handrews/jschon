@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     'JSONResource',
+    'ResourceURIs',
     'ResourceError',
     'ResourceNotReadyError',
     'ResourceURINotSetError',
@@ -42,7 +43,7 @@ class BaseURIConflictError(ResourceError):
 
 @dataclass(frozen=True)
 class ResourceURIs:
-    """Data structure for organizing URIs by use case."""
+    """Data structure for organizing resource document node URIs by use case."""
 
     register_uri: bool
     """Indicates if :attr:`property_uri` should be registered with the catalog."""
@@ -58,6 +59,104 @@ class ResourceURIs:
 
     additional_uris: Set[URI]
     """Alternate URIs to register with the catalog."""
+
+    @classmethod
+    def pointer_uri_for(cls, node):
+        res_root = node.resource_root
+        ptr_from_res_root = node.path[len(res_root.path):]
+        return res_root.uri.copy(fragment=ptr_from_res_root.uri_fragment())
+
+    @classmethod
+    def uris_for(cls, node, uri: Optional[URI]) -> ResourceURIs:
+        """Determine the URIs for various use cases.
+
+        Absolute URIs (without a fragment) and URIs with non-JSON Pointer
+        fragments are registered as-is.  If a non-JSON Pointer fragment
+        is given for a resource root, the absolute form is assigned
+        to :attr:`property_uri` (and :attr:`base_uri`) while the fragment URI
+        is assigned to :attr:`additional_uris`.
+
+        JSON Pointer fragment URIs do not need to be registered with the
+        catalog.  However, the empty JSON Pointer is semantically equivalent
+        to not having a fragment, so in that case the absolute portion of
+        that URI is assigned to :attr:`property_uri` and :attr:`base_uri`.
+
+        JSON Pointer fragment URIs never appear in :attr:`additional_uris`.
+
+        If ``uri`` is ``None`` and this document node is a resource root,
+        a UUID URN is generated for catalog registration purposes.
+        """
+        # TODO: should UUID generation check for resource root-ness?
+        # CATALOG, .uri, .ptr_uri
+        if uri is None:
+            if node.is_resource_root():
+                urn = URI(f'urn:uuid:{uuid4()}')
+                return ResourceURIs(
+                    register_uri=True,
+                    property_uri=urn,
+                    pointer_uri=urn.copy(fragment=''),
+                    base_uri=urn,
+                    additional_uris=set(),
+                )
+            assert node != node.resource_root
+            ptr_uri = cls.pointer_uri_for(node)
+            return ResourceURIs(
+                register_uri=False,
+                property_uri=ptr_uri,
+                pointer_uri=ptr_uri,
+                base_uri=node.resource_root.base_uri,
+                additional_uris=set(),
+            )
+
+        fragment = uri.fragment
+        if fragment is None:
+            return ResourceURIs(
+                register_uri=True,
+                property_uri=uri,
+                pointer_uri=uri.copy(fragment=''),
+                base_uri=uri,
+                additional_uris=set(),
+            )
+
+        if fragment == '':
+            absolute_uri = uri.copy(fragment=None)
+            return ResourceURIs(
+                register_uri=True,
+                property_uri=absolute_uri,
+                pointer_uri=uri,
+                base_uri=absolute_uri,
+                additional_uris=set(),
+            )
+
+        if fragment[0] == '/':
+            return ResourceURIs(
+                register_uri=False,
+                property_uri=uri,
+                pointer_uri=uri,
+                base_uri=uri.copy(fragment=None),
+                additional_uris=set(),
+            )
+
+        # Non-JSON Pointer fragment at root node
+        if node.is_resource_root():
+            absolute = uri.copy(fragment=None)
+            return ResourceURIs(
+                register_uri=True,
+                property_uri=absolute,
+                pointer_uri=uri.copy(fragment=''),
+                base_uri=absolute,
+                additional_uris={uri},
+            )
+
+        # Non-JSON Pointer fragment at sub-document node
+        ptr_uri = cls.pointer_uri_for(node)
+        return ResourceURIs(
+            register_uri=True,
+            property_uri=uri,
+            pointer_uri=ptr_uri,
+            base_uri=ptr_uri.copy(fragment=None),
+            additional_uris=set(),
+        )
 
 
 class JSONResource(JSON):
@@ -106,14 +205,14 @@ class JSONResource(JSON):
         instantiated by the :class:`~jschon.catalog.Catalog`, this is
         the URI provided to the :meth:`~jschon.catalog.Catalog.get_resource`
         call (or any type-specific version of it, e.g. ``get_schema()``).
-        See :meth:`uris_for` for how various cases, including no URI
-        being provided, are handled.
+        See :meth:`ResourceURIs.uris_for` for how various cases, including
+        no URI being provided, are handled.
     :param additional_uris: Additional URIs under which this resource
         should be registered.  The caller is responsible for ensuring
         that these URIs, along with the ``uri`` parameter, do not
         conflict with each other in problematic ways.  URIs with non-empty
-        JSON Pointer fragments are ignored; see :meth:`uris_for` for an
-        explanation.
+        JSON Pointer fragments are ignored; see :meth:`ResourceURIs.uris_for`
+        for an explanation.
     """
     def __init__(
         self,
@@ -226,97 +325,6 @@ class JSONResource(JSON):
                 self._uri = self._uri.copy(fragment=None)
             catalog.add_resource(self._uri, self, cacheid=cacheid)
 
-    def _get_pointer_uri(self):
-        res_root = self.resource_root
-        ptr_from_res_root = self.path[len(res_root.path):]
-        return res_root.uri.copy(fragment=ptr_from_res_root.uri_fragment())
-
-    def uris_for(self, uri: Optional[URI]) -> ResourceURIs:
-        """Determine the URIs for various use cases.
-
-        Absolute URIs (without a fragment) and URIs with non-JSON Pointer
-        fragments are registered as-is.
-
-        JSON Pointer fragment URIs do not need to be registered with the
-        catalog.  However, the empty JSON Pointer is semantically equivalent
-        to not having a fragment, so in that case the absolute URI is returned.
-        is returned.
-
-        If ``uri`` is ``None`` and this document node is a resource root,
-        a UUID URN is generated for catalog registration purposes.
-        """
-        # TODO: should UUID generation check for resource root-ness?
-        # CATALOG, .uri, .ptr_uri
-        if uri is None:
-            if self.is_resource_root():
-                urn = URI(f'urn:uuid:{uuid4()}')
-                return ResourceURIs(
-                    register_uri=True,
-                    property_uri=urn,
-                    pointer_uri=urn.copy(fragment=''),
-                    base_uri=urn,
-                    additional_uris=set(),
-                )
-            assert self != self.resource_root
-            ptr_uri = self._get_pointer_uri()
-            return ResourceURIs(
-                register_uri=False,
-                property_uri=ptr_uri,
-                pointer_uri=ptr_uri,
-                base_uri=self.resource_root.base_uri,
-                additional_uris=set(),
-            )
-
-        fragment = uri.fragment
-        if fragment is None:
-            return ResourceURIs(
-                register_uri=True,
-                property_uri=uri,
-                pointer_uri=uri.copy(fragment=''),
-                base_uri=uri,
-                additional_uris=set(),
-            )
-
-        if fragment == '':
-            absolute_uri = uri.copy(fragment=None)
-            return ResourceURIs(
-                register_uri=True,
-                property_uri=absolute_uri,
-                pointer_uri=uri,
-                base_uri=absolute_uri,
-                additional_uris=set(),
-            )
-
-        if fragment[0] == '/':
-            return ResourceURIs(
-                register_uri=False,
-                property_uri=uri,
-                pointer_uri=uri,
-                base_uri=uri.copy(fragment=None),
-                additional_uris=set(),
-            )
-
-        # Non-JSON Pointer fragment at root node
-        if self.is_resource_root():
-            absolute = uri.copy(fragment=None)
-            return ResourceURIs(
-                register_uri=True,
-                property_uri=absolute,
-                pointer_uri=uri.copy(fragment=''),
-                base_uri=absolute,
-                additional_uris={uri},
-            )
-
-        # Non-JSON Pointer fragment at sub-document node
-        ptr_uri = self._get_pointer_uri()
-        return ResourceURIs(
-            register_uri=True,
-            property_uri=uri,
-            pointer_uri=ptr_uri,
-            base_uri=ptr_uri.copy(fragment=None),
-            additional_uris=set(),
-        )
-
     @property
     def parent_in_resource(self) -> JSONResource:
         """Returns the nearest parent node that is of a resource type, if any.
@@ -379,8 +387,8 @@ class JSONResource(JSON):
         disagrees with :attr:`base_uri` is not allowed; see
         :attr:`additional_uris` for managing alternate URI registration.
 
-        See :meth"`uris_for` for an explanation of how JSON Pointer fragment
-        URIs are handled as catalog cache keyes.
+        See :meth"`ResourceURIs.uris_for` for an explanation of how JSON
+        Pointer fragment URIs are handled as catalog cache keyes.
 
         Assigning to this URI will unregister the old URI from the catalog
         and re-register this resource under the new URI, and update
@@ -392,7 +400,7 @@ class JSONResource(JSON):
 
     @uri.setter
     def uri(self, uri: Optional[URI]) -> None:
-        uris = self.uris_for(uri)
+        uris = ResourceURIs.uris_for(self, uri)
         if self.is_resource_root:
             if self._base_uri is not None and self.base_uri != uris.base_uri:
                 # TODO: update children

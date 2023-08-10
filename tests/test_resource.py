@@ -60,16 +60,14 @@ class FakeSchema(JSONResource):
             anchor_uris = anchor_uris[1:]
 
         elif uri is not None and len(anchor_uris) == 1:
-            # Reverse from the recommendation to test robustness
+            # Reverse from the expected arrangement to test that
+            # the outcome remains the same.
             tmp = uri
             uri = anchor_uris[0]
             anchor_uris[0] = tmp
 
         additional_uris = set(anchor_uris)
-
-        assert None not in additional_uris
-
-        assert (base_uri is None) or (base_uri.fragment is None)
+        self.base_uri_from_init = base_uri
 
         if kwargs.get('itemclass') is None:
             kwargs['itemclass'] = FakeSchema
@@ -86,25 +84,28 @@ class FakeSchema(JSONResource):
         return "$id" in self.data or self.parent_in_resource is None
 
 
-def test_constructor_defaults():
+# JSONResource to test the actual defaults of the base class,
+# FakeSchema because its is_resource_root() accesses parent information.
+@pytest.mark.parametrize('cls', (JSONResource, FakeSchema))
+def test_constructor_defaults(cls):
     input_value = {'foo': ['bar']}
-    jr = FakeSchema(input_value)
+    jr = cls(input_value)
 
-    assert type(jr) is FakeSchema
+    assert type(jr) is cls
     assert jr.path == JSONPointer('')
     assert jr.parent is None
     assert jr.parent_in_resource is None
     assert jr.resource_root is jr
     assert jr.is_resource_root() is True
 
-    assert type(jr['foo']) is FakeSchema
+    assert type(jr['foo']) is cls
     assert jr['foo'].path == JSONPointer('/foo')
     assert jr['foo'].parent is jr
     assert jr['foo'].parent_in_resource is jr['foo'].parent
     assert jr['foo'].resource_root is jr
     assert jr['foo'].is_resource_root() is False
 
-    assert type(jr['foo'][0]) is FakeSchema
+    assert type(jr['foo'][0]) is cls
     assert jr['foo'][0].path == JSONPointer('/foo/0')
     assert jr['foo'][0].parent is jr['foo']
     assert jr['foo'][0].parent_in_resource is jr['foo'][0].parent
@@ -193,8 +194,8 @@ def test_constructor_defaults():
             True,
             URI('https://ex.org'),
             URI('https://ex.org#'),
-            URI('https://ex.org#baz'),
-            {URI('https://ex.org')},
+            URI('https://ex.org'),
+            {URI('https://ex.org#baz')},
         ),
     ),
 )
@@ -212,8 +213,9 @@ def test_uris(
     r = pointer.evaluate(full)
 
     assert r.uri == property_uri
-    assert r.base_uri == base_uri
     assert r.pointer_uri == base_uri.copy(fragment=pointer.uri_fragment())
+    assert r.base_uri_from_init == base_uri
+    assert r.base_uri == base_uri
 
     assert register_uri == (property_uri in catalog._schema_cache['default'])
     assert catalog.get_resource(property_uri, cls=FakeSchema) is r
