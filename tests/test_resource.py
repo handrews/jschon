@@ -18,20 +18,11 @@ class FakeSchema(JSONResource):
     # also expected to work and is tested by test_schema.py and the
     # JSON Schema Test Suite.
     def __init__(self, value, *args, parent=None, uri=None, **kwargs):
-        if uri is not None:
-            assert uri.scheme
-
-            # We treat the provided URI as either the request URI (for
-            # a root node and when no "$id" is present) or the URI of the
-            # enclosing resource (if "$id" is present in an ancestor node).
-            # These cases are the correct sources for an initial base URI
-            # per RFC 3986 §5.1.3 and 5.1.2, respectively..
-            base_uri = (
-                parent.base_uri if parent is not None
-                else uri.copy(fragment=None)
-            )
+        if uri is None:
+            base_uri = None if parent is None else parent.base_uri
         else:
-            base_uri = None
+            assert uri.scheme
+            base_uri = uri.copy(fragment=None)
 
         additional_uris = set()
         if "$id" in value:
@@ -49,12 +40,13 @@ class FakeSchema(JSONResource):
             if id_uri != uri:
                 if uri is not None:
                     additional_uris.add(uri)
-                uri = id_uri
-                base_uri = id_uri.copy(fragment=None)
+            uri = id_uri
+            base_uri = uri.copy(fragment=None)
 
+        anchor_uris = []
         for frag_kwd in ("$anchor", "$dynamicAnchor"):
             if frag_kwd in value:
-                additional_uris.add(
+                anchor_uris.append(
                     base_uri.copy(
                         fragment=urllib.parse.quote(
                             value[frag_kwd],
@@ -62,13 +54,23 @@ class FakeSchema(JSONResource):
                         )
                     )
                 )
-        if len(additional_uris) == 1:
+        if uri is None and anchor_uris:
+            # We don't have an absolute-URI, take the first anchor URI instead.
+            uri = anchor_uris[0]
+            anchor_uris = anchor_uris[1:]
+
+        elif uri is not None and len(anchor_uris) == 1:
             # Reverse from the recommendation to test robustness
             tmp = uri
-            uri = additional_uris.pop()
-            additional_uris = {tmp}
+            uri = anchor_uris[0]
+            anchor_uris[0] = tmp
+
+        additional_uris = set(anchor_uris)
 
         assert None not in additional_uris
+
+        assert (base_uri is None) or (base_uri.fragment is None)
+
         if kwargs.get('itemclass') is None:
             kwargs['itemclass'] = FakeSchema
         super().__init__(
@@ -189,9 +191,9 @@ def test_constructor_defaults():
             {"$id": "https://ex.org#", "$dynamicAnchor": "baz"},
             JSONPointer(),
             True,
-            URI('https://ex.org#baz'),
-            URI('https://ex.org#'),
             URI('https://ex.org'),
+            URI('https://ex.org#'),
+            URI('https://ex.org#baz'),
             {URI('https://ex.org')},
         ),
     ),
