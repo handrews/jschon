@@ -365,6 +365,19 @@ def test_change_additional_uris(catalog):
         catalog.get_resource(dynamic_anchor_uri)
 
 
+def test_invalidate_path():
+    base_uri = URI('https://example.com')
+    r = FakeSchema({"$id": str(base_uri), "data": ['a', 'b', 'c']})
+
+    c = r['data'][2]
+    assert c.pointer_uri == base_uri.copy(fragment='/data/2')
+
+    del r['data'][1]
+
+    assert r['data'][1] is c
+    assert c.pointer_uri == base_uri.copy(fragment='/data/1')
+
+
 def test_invalidate_path_attr_error():
     r = JSONResource({})
 
