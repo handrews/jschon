@@ -16,6 +16,7 @@ __all__ = [
     'JSONResource',
     'ResourceURIs',
     'ResourceError',
+    'BaseURIConflictError',
     'ResourceNotReadyError',
     'ResourceURINotSetError',
     'RelativeResourceURIError',
@@ -437,6 +438,9 @@ class JSONResource(JSON):
         old_uri = self._uri
         old_base = self._base_uri
 
+        if not self.is_resource_root() and uris.base_uri != self.parent.base_uri:
+            raise BaseURIConflictError()
+
         self._uri = uris.property_uri
         self._base_uri = uris.base_uri
         self._pointer_uri = uris.pointer_uri
@@ -444,14 +448,9 @@ class JSONResource(JSON):
         # TODO: Might we ever want to unregister existing additional URIs?
         self.additional_uris = self.additional_uris | uris.additional_uris
 
-        if self.is_resource_root():
-            if old_base is not None and old_base != self.base_uri:
-                for key, child in self.children_in_resource:
-                    child.uri = self.base_uri.copy(fragment=child.uri.fragment)
-
-        elif self.parent.base_uri != uris.base_uri:
-            print(f'<{old_base}> != <{uris.base_uri}>')
-            raise BaseURIConflictError()
+        if old_base is not None and old_base != self.base_uri:
+            for key, child in self.children_in_resource:
+                child.uri = self.base_uri.copy(fragment=child.uri.fragment)
 
         if uris.register_uri:
             if old_uri is not None and old_uri != uris.property_uri:

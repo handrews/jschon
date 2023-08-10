@@ -8,6 +8,7 @@ from jschon.resource import (
     ResourceURIs,
     ResourceError,
     ResourceNotReadyError,
+    BaseURIConflictError,
     ResourceURINotSetError,
     RelativeResourceURIError,
 )
@@ -299,7 +300,10 @@ def mixed_document():
 def test_reassign_root_uri_with_children(catalog):
     original = URI('tag:example.com,2023:one')
     new = URI('tag:example.com,2023:two')
-    r = JSONResource({'foo': 'bar'}, uri=original)
+
+    # Need to test children of both objects and arrays,
+    # and test at least 2 levels deep.
+    r = JSONResource({'foo': ['bar']}, uri=original)
     r.uri = new
 
     assert r.uri == new
@@ -317,3 +321,45 @@ def test_reassign_root_uri_with_children(catalog):
     assert catalog.get_resource(r['foo'].uri) is r['foo']
     with pytest.raises(CatalogError):
         catalog.get_resource(original.copy(fragment='/foo'))
+
+    assert r['foo'][0].uri == new.copy(fragment='/foo/0')
+    assert r['foo'][0].pointer_uri == r['foo'][0].uri
+    assert r['foo'][0].base_uri == r.uri
+    assert r['foo'][0].additional_uris == frozenset()
+    assert catalog.get_resource(r['foo'][0].uri) is r['foo'][0]
+    with pytest.raises(CatalogError):
+        catalog.get_resource(original.copy(fragment='/foo/0'))
+
+
+def test_base_uri_conflict():
+    r = JSONResource({'foo': 42})
+    with pytest.raises(BaseURIConflictError):
+        r['foo'].uri = URI('https:not-a-urn.com#/foo')
+
+
+def test_change_additional_uris(catalog):
+    base_uri_str = "https://example.com/base"
+    anchor_str = "a"
+    dynamic_anchor_str = "b"
+
+    base_uri = URI(base_uri_str)
+    anchor_uri = base_uri.copy(fragment=anchor_str)
+    dynamic_anchor_uri = base_uri.copy(fragment=dynamic_anchor_str)
+    other_uri = URI("tag:example.com,2023:something-different")
+
+    r = FakeSchema({
+        "$id": base_uri_str,
+        "$anchor": anchor_str,
+        "$dynamicAnchor": dynamic_anchor_str,
+    })
+    # Recall that you cannot change the primary URI through additional_uris
+    r.additional_uris = (
+        r.additional_uris - {dynamic_anchor_uri, base_uri}
+    ) | {other_uri}
+
+    assert r.uri == base_uri
+    assert catalog.get_resource(r.uri) is r
+    assert catalog.get_resource(anchor_uri) is r
+    assert catalog.get_resource(other_uri) is r
+    with pytest.raises(CatalogError):
+        catalog.get_resource(dynamic_anchor_uri)
