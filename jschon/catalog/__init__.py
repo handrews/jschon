@@ -10,6 +10,7 @@ from typing import Any, ContextManager, Dict, Hashable, Set, Union
 from jschon.exceptions import CatalogError, JSONPointerError, URIError
 from jschon.json import JSONCompatible
 from jschon.jsonpointer import JSONPointer
+from jschon.resource import JSONResource
 from jschon.jsonschema import JSONSchema
 from jschon.uri import URI
 from jschon.utils import json_loadf, json_loadr
@@ -346,7 +347,7 @@ class Catalog:
         *,
         metadocument_uri: URI = None,
         cacheid: Hashable = 'default',
-        cls: Union[Type[JSONResource], Type[JSONSchema]] = JSONSchema,
+        cls: Union[Type[JSONResource], Type[JSONSchema]] = JSONResource,
     ) -> JSONResource:
         """Get a (sub)resource identified by `uri` from a cache, or
         load it from a :class:`Source` if not already cached.
@@ -427,7 +428,12 @@ class Catalog:
         :raise CatalogError: if a schema cannot be found for `uri`, or if the
             object referenced by `uri` is not a :class:`~jschon.jsonschema.JSONSchema`
         """
-        return self.get_resource(uri, metadocument_uri=metaschema_uri, cacheid=cacheid)
+        return self.get_resource(
+            uri,
+            metadocument_uri=metaschema_uri,
+            cacheid=cacheid,
+            cls=JSONSchema,
+        )
 
     @contextmanager
     def cache(self, cacheid: Hashable = None) -> ContextManager[Hashable]:
