@@ -36,14 +36,19 @@ class FakeSchema(JSONResource):
         additional_uris = set()
         if "$id" in value:
             id_uri_ref = URI(value["$id"])
+
             assert id_uri_ref.fragment in (None, '')
+            if id_uri_ref.scheme is None:
+                if base_uri is None:
+                    raise ValueError('FakeSchema: Cannot resolve relative $id')
 
-            if base_uri is None:
-                raise ValueError('FakeSchema: Cannot resolve relative $id')
+                id_uri = id_uri_ref.resolve(base_uri)
+            else:
+                id_uri = id_uri_ref
 
-            id_uri = id_uri_ref.resolve(base_uri)
             if id_uri != uri:
-                additional_uris.add(uri)
+                if uri is not None:
+                    additional_uris.add(uri)
                 uri = id_uri
                 base_uri = id_uri.copy(fragment=None)
 
@@ -57,7 +62,13 @@ class FakeSchema(JSONResource):
                         )
                     )
                 )
+        if len(additional_uris) == 1:
+            # Reverse from the recommendation to test robustness
+            tmp = uri
+            uri = additional_uris.pop()
+            additional_uris = {tmp}
 
+        assert None not in additional_uris
         if kwargs.get('itemclass') is None:
             kwargs['itemclass'] = FakeSchema
         super().__init__(
@@ -126,68 +137,83 @@ def test_constructor_defaults():
     assert jr['foo'][0].uri == jr['foo'][0].pointer_uri
     assert jr['foo'][0].additional_uris == frozenset()
 
-# @pytest.mark.parametrize(
-#     'document,pointer,input_uri,catalog_uris,property_uri,base_uri',
-#     (
-#         (
-#             {},
-#             JSONPointer(),
-#             URI('https://ex.org'),
-#             {URI('https://ex.org')},
-#             URI('https://ex.org'),
-#             URI('https://ex.org'),
-#         ),
-#         (
-#             {},
-#             JSONPointer(),
-#             URI('https://ex.org#'),
-#             {URI('https://ex.org')},
-#             URI('https://ex.org'),
-#             URI('https://ex.org'),
-#         ),
-#         (
-#             {"things": {"foo": {}}},
-#             JSONPointer('/things/foo'),
-#             URI('https://ex.org#/things/foo'),
-#             set(),
-#             URI('https://ex.org#/things/foo'),
-#             URI('https://ex.org'),
-#         ),
-#         (
-#             {"things": {"foo": {}}},
-#             JSONPointer('/things/foo'),
-#             URI('https://ex.org#bar'),
-#             {URI('https://ex.org#bar')},
-#             URI('https://ex.org#bar'),
-#             URI('https://ex.org'),
-#         ),
-#         (
-#             {},
-#             JSONPointer(),
-#             URI('https://ex.org#bar'),
-#             {URI('https://ex.org'), URI('https://ex.org#bar')},
-#             URI('https://ex.org#bar'),
-#             URI('https://ex.org'),
-#         ),
-#     ),
-# )
-# def test_uris(
-#     document,
-#     pointer,
-#     input_uri,
-#     catalog_uris,
-#     property_uri,
-#     base_uri,
-#     catalog,
-# ):
-#     full = JSONResource(document, uri=input_uri)
-#     r = pointer.evaluate(full)
-#     assert r._catalog_uris == catalog_uris
-#     assert r.uri == property_uri
-#     assert r.pointer_uri == base_uri.copy(fragment=pointer.uri_fragment())
-#     assert r.base_uri == base_uri
-#     assert base_uri in document.cata
-# 
-#     for cu in catalog_uris:
-#         assert catalog.get_resource(cu) is r
-#     assert catalog.get_resource(r.uri) is r
+@pytest.mark.parametrize(
+    'document,pointer,register_uri,property_uri,pointer_uri,base_uri,additional_uris',
+    (
+        (
+            {"$id": "https://ex.org"},
+            JSONPointer(),
+            True,
+            URI('https://ex.org'),
+            URI('https://ex.org#'),
+            URI('https://ex.org'),
+            frozenset(),
+        ),
+        (
+            {"$id": "https://ex.org#"},
+            JSONPointer(),
+            True,
+            URI('https://ex.org'),
+            URI('https://ex.org#'),
+            URI('https://ex.org'),
+            frozenset(),
+        ),
+        (
+            {"$id": "https://ex.org", "things": {"foo": {}}},
+            JSONPointer('/things/foo'),
+            False,
+            URI('https://ex.org#/things/foo'),
+            URI('https://ex.org#/things/foo'),
+            URI('https://ex.org'),
+            frozenset(),
+        ),
+        (
+            {"$id": "https://ex.org#", "things": {"foo": {"$anchor": "bar"}}},
+            JSONPointer('/things/foo'),
+            True,
+            URI('https://ex.org#bar'),
+            URI('https://ex.org#/things/foo'),
+            URI('https://ex.org'),
+            frozenset(),
+        ),
+        (
+            {"$id": "https://ex.org", "$anchor": "bar", "$dynamicAnchor": "baz"},
+            JSONPointer(),
+            True,
+            URI('https://ex.org'),
+            URI('https://ex.org#'),
+            URI('https://ex.org'),
+            {URI('https://ex.org#bar'), URI('https://ex.org#baz')},
+        ),
+        (
+            {"$id": "https://ex.org#", "$dynamicAnchor": "baz"},
+            JSONPointer(),
+            True,
+            URI('https://ex.org#baz'),
+            URI('https://ex.org#'),
+            URI('https://ex.org'),
+            {URI('https://ex.org')},
+        ),
+    ),
+)
+def test_uris(
+    document,
+    pointer,
+    register_uri,
+    property_uri,
+    pointer_uri,
+    base_uri,
+    additional_uris,
+    catalog,
+):
+    full = FakeSchema(document)
+    r = pointer.evaluate(full)
+
+    assert r.uri == property_uri
+    assert r.base_uri == base_uri
+    assert r.pointer_uri == base_uri.copy(fragment=pointer.uri_fragment())
+
+    assert register_uri == (property_uri in catalog._schema_cache['default'])
+    assert catalog.get_resource(property_uri, cls=FakeSchema) is r
+    for au in additional_uris:
+        assert catalog.get_resource(au) is r
