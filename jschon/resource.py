@@ -208,6 +208,7 @@ class JSONResource(JSON):
             raise RelativeResourceURIError()
         assert hasattr(self, '_uri')
         self.uri = uri
+        self.addition_uris = self.additional_uris | additional_uris
 
         frag = self._uri.fragment
         if frag in (None, '') or (frag[0] != '/'):
@@ -219,8 +220,8 @@ class JSONResource(JSON):
 
     def _get_pointer_uri(self):
         res_root = self.resource_root
-        ptr_from_res_root = self.path[len(root.path):]
-        return root.uri.copy(fragment=ptr_from_res_root.uri_fragment())
+        ptr_from_res_root = self.path[len(res_root.path):]
+        return res_root.uri.copy(fragment=ptr_from_res_root.uri_fragment())
 
     def uris_for(self, uri: Optional[URI]) -> ResourceURIs:
         """Determine the URIs for various use cases.
@@ -248,7 +249,7 @@ class JSONResource(JSON):
                     base_uri=urn,
                     additional_uris=set(),
                 )
-
+            assert self != self.resource_root
             ptr_uri = self._get_pointer_uri()
             return ResourceURIs(
                 register_uri=False,

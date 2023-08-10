@@ -117,6 +117,23 @@ class JSON(MutableSequence['JSON'], MutableMapping[str, 'JSON']):
         self.itemkwargs: Dict[str, Any] = itemkwargs
         """Keyword arguments to the :attr:`itemclass` constructor."""
 
+        # Temporary assignment to allow examining child values
+        # during _pre_recursion_init()
+        #
+        # TODO: value and data only behave the same for immediate scalar
+        #       properties and items.  It is probably unrealistic to expect
+        #       all code that might get accessed by _pre_recursion_init()
+        #       to handle this discrepancy.  However, it is not clear how
+        #       else to get the raw value data in the necessary place.
+        #       Moving _pre_recursion_init() after the recursion does not
+        #       work because certain things that happen during recursion
+        #       require correctly set parent URIs.
+        #
+        #       Defer recursion in recurse_func as _pre_recursion_init()
+        #       needs self.type and a value-ish self.data.
+        self.data = value
+        recurse_func = None
+
         if value is None:
             self.type = "null"
             self.data = None
@@ -135,14 +152,14 @@ class JSON(MutableSequence['JSON'], MutableMapping[str, 'JSON']):
 
         elif isinstance(value, Sequence):
             self.type = "array"
-            self.data = [
+            recurse_func = lambda: [
                 self.itemclass(v, parent=self, key=str(i), **self.itemkwargs)
                 for i, v in enumerate(value)
             ]
 
         elif isinstance(value, Mapping):
             self.type = "object"
-            self.data = {
+            recurse_func = lambda: {
                 k: self.itemclass(v, parent=self, key=k, **self.itemkwargs)
                 for k, v in value.items()
             }
@@ -157,6 +174,9 @@ class JSON(MutableSequence['JSON'], MutableMapping[str, 'JSON']):
             itemclass=itemclass,
             **itemkwargs,
         )
+
+        if recurse_func is not None:
+            self.data = recurse_func()
 
     def _pre_recursion_init(
         self,
