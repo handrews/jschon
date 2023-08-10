@@ -2,14 +2,36 @@ import urllib.parse
 
 import pytest
 
-from jschon import Catalog, JSONPointer, URI
+from jschon import Catalog, create_catalog, JSON, JSONPointer, URI
 from jschon.resource import (
     JSONResource,
+    ResourceURIs,
     ResourceError,
     ResourceNotReadyError,
     ResourceURINotSetError,
     RelativeResourceURIError,
 )
+
+class TooSoon(JSONResource):
+    def __init__(self, *args, **kwargs):
+        # Generate ResourceNotReadyError
+        self._pre_recursion_init(*args, **kwargs)
+
+
+class UnSet(JSONResource):
+    def _pre_recursion_init(self, *args, **kwargs):
+        # Tests accessing properties before initialization
+        pass
+
+
+class PreCalculatePointerUri(JSONResource):
+    def _pre_recursion_init(self, *args, **kwargs):
+        # It is otherwise difficult to pass a non-root JSON Pointer fragment
+        # URI without producing a document tree with inconsistent state.
+        if not self.is_resource_root():
+            kwargs['uri'] = ResourceURIs.pointer_uri_for(self)
+        super()._pre_recursion_init(*args, **kwargs)
+
 
 class FakeSchema(JSONResource):
     # For testing purposes, this simulates handling "$id", "$anchor",
@@ -140,6 +162,37 @@ def test_constructor_defaults(cls):
     assert jr['foo'][0].uri == jr['foo'][0].pointer_uri
     assert jr['foo'][0].additional_uris == frozenset()
 
+
+def test_catalog_and_cacheid():
+    foo_cat = create_catalog('2019-09', name='foo')
+
+    r1 = JSONResource({}, catalog=foo_cat)
+    assert r1.catalog == foo_cat
+
+    r2 = JSONResource({}, catalog='foo', cacheid='bar')
+    assert r2.catalog == foo_cat
+    assert r2.cacheid == 'bar'
+
+
+def test_resource_not_ready():
+    with pytest.raises(ResourceNotReadyError):
+        TooSoon()
+
+@pytest.mark.parametrize(
+    'attr',
+    ('uri', 'pointer_uri', 'base_uri'),
+)
+def test_uri_not_set(attr):
+    r = UnSet({})
+    with pytest.raises(ResourceURINotSetError):
+        getattr(r, attr)
+
+
+def test_relative_base_error():
+    with pytest.raises(RelativeResourceURIError):
+        JSONResource({}, uri=URI('/foo/bar'))
+
+
 @pytest.mark.parametrize(
     'document,pointer,register_uri,property_uri,pointer_uri,base_uri,additional_uris',
     (
@@ -221,3 +274,23 @@ def test_uris(
     assert catalog.get_resource(property_uri, cls=FakeSchema) is r
     for au in additional_uris:
         assert catalog.get_resource(au) is r
+
+
+def test_non_root_json_pointer_uri():
+    # This cannot be covered using FakeSchema
+    base = URI('tag:example.com,2023:base')
+    r = PreCalculatePointerUri({'foo': 'bar'}, uri=base)
+    assert r.uri == base
+    assert r['foo'].uri == base.copy(fragment=r['foo'].path.uri_fragment())
+
+
+@pytest.fixture
+def mixed_document():
+    root_node = JSONResource({})
+    root_node['plain_node'] = JSON({}, itemclass=JSONResource)
+    root_node['plain_node']['resource_node'] = JSONResource({})
+    assert root_node.path == JSONPointer()
+    assert root_node['plain_node'].path == JSONPointer('/plain_node')
+    assert root_node['plain_node']['resource_node'].path == JSONPointer('/plain_node/resource_node')
+
+    return root_node

@@ -5,8 +5,9 @@ from uuid import uuid4
 
 from typing import Any, ContextManager, Dict, FrozenSet, Hashable, Iterator, Mapping, Optional, Set, TYPE_CHECKING, Tuple, Type, Union
 
-from jschon import JSON, URI
 from jschon.exc import JschonError
+from jschon.json import JSON
+from jschon.uri import URI
 
 if TYPE_CHECKING:
     from jschon.catalog import Catalog, Source
@@ -98,7 +99,7 @@ class ResourceURIs:
                     base_uri=urn,
                     additional_uris=set(),
                 )
-            assert node != node.resource_root
+
             ptr_uri = cls.pointer_uri_for(node)
             return ResourceURIs(
                 register_uri=False,
@@ -242,6 +243,7 @@ class JSONResource(JSON):
         # TODO: Should there be a more general "prep itemkwargs"
         #       hook for handling such things?
         self._tentative_uri: Optional[URI] = uri
+        self._tentative_additional_uris: Set[URI] = additional_uris
 
         if itemclass is None:
             itemclass = JSONResource
@@ -255,8 +257,7 @@ class JSONResource(JSON):
             cacheid=cacheid,
             **itemkwargs,
         )
-        self.additional_uris |= additional_uris
-        
+
         # self.init_resource(uri, catalog=catalog, cacheid=cacheid)
         if parent is None and resolve_references:
             self.resolve_references()
@@ -314,16 +315,8 @@ class JSONResource(JSON):
         uri = self._tentative_uri
         if uri is not None and not uri.has_absolute_base():
             raise RelativeResourceURIError()
-        assert hasattr(self, '_uri')
         self.uri = uri
-
-        frag = self._uri.fragment
-        if frag in (None, '') or (frag[0] != '/'):
-            # Add all non-JSON Pointer fragment URIs.  Strip the
-            # empty JSON Pointer if relevant.
-            if frag == '':
-                self._uri = self._uri.copy(fragment=None)
-            catalog.add_resource(self._uri, self, cacheid=cacheid)
+        self.additional_uris |= self._tentative_additional_uris
 
     @property
     def parent_in_resource(self) -> JSONResource:
@@ -401,12 +394,12 @@ class JSONResource(JSON):
     @uri.setter
     def uri(self, uri: Optional[URI]) -> None:
         uris = ResourceURIs.uris_for(self, uri)
-        if self.is_resource_root:
+        if self.is_resource_root():
             if self._base_uri is not None and self.base_uri != uris.base_uri:
                 # TODO: update children
                 #       how to handle children with non-JSON Pointer URIs?
                 raise NotImplementedError
-        elif self.base_uri != uris.base_uri:
+        elif self._base_uri is not None and self._base_uri != uris.base_uri:
             raise BaseURIConflictError()
 
         if uris.register_uri:
@@ -463,7 +456,10 @@ class JSONResource(JSON):
             for u in uris
             if u.fragment in (None, '') or u.fragment[0] != '/'
         }
-        uris.discard(self.uri)
+
+        # Allow assigning before self.uri is set by accessing self._uri
+        uris.discard(self._uri)
+
         for removed in self._additional_uris - uris:
             self.catalog.del_resource(removed, cacheid=self.cacheid)
         for added in uris - self._additional_uris:
