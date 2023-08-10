@@ -117,49 +117,40 @@ class JSON(MutableSequence['JSON'], MutableMapping[str, 'JSON']):
         self.itemkwargs: Dict[str, Any] = itemkwargs
         """Keyword arguments to the :attr:`itemclass` constructor."""
 
-        # Temporary assignment to allow examining child values
-        # during _pre_recursion_init()
+        # During recursive construction, the data attribute is by definition
+        # incompletely initialized.  Setting it to the value up front is
+        # correct for scalar types and allows setting the type attribute and
+        # allows for limited use of the data attribute on parent nodes during
+        # child node construction.  While not an ideal state, it is closer
+        # to the proper state for data than not having the attribute at all.
         #
-        # TODO: value and data only behave the same for immediate scalar
-        #       properties and items.  It is probably unrealistic to expect
-        #       all code that might get accessed by _pre_recursion_init()
-        #       to handle this discrepancy.  However, it is not clear how
-        #       else to get the raw value data in the necessary place.
-        #       Moving _pre_recursion_init() after the recursion does not
-        #       work because certain things that happen during recursion
-        #       require correctly set parent URIs.
-        #
-        #       Defer recursion in recurse_func as _pre_recursion_init()
-        #       needs self.type and a value-ish self.data.
+        # Proper recursive initialiazation is stored as a callable and carried
+        # out after the pre-recursion hook is executed.
         self.data = value
-        recurse_func = None
+        data_recurse_func = None
 
         if value is None:
             self.type = "null"
-            self.data = None
 
         elif isinstance(value, bool):
             self.type = "boolean"
-            self.data = value
 
         elif isinstance(value, (int, float)):
             self.type = "number"
-            self.data = value
 
         elif isinstance(value, str):
             self.type = "string"
-            self.data = value
 
         elif isinstance(value, Sequence):
             self.type = "array"
-            recurse_func = lambda: [
+            data_recurse_func = lambda: [
                 self.itemclass(v, parent=self, key=str(i), **self.itemkwargs)
                 for i, v in enumerate(value)
             ]
 
         elif isinstance(value, Mapping):
             self.type = "object"
-            recurse_func = lambda: {
+            data_recurse_func = lambda: {
                 k: self.itemclass(v, parent=self, key=k, **self.itemkwargs)
                 for k, v in value.items()
             }
@@ -175,8 +166,8 @@ class JSON(MutableSequence['JSON'], MutableMapping[str, 'JSON']):
             **itemkwargs,
         )
 
-        if recurse_func is not None:
-            self.data = recurse_func()
+        if data_recurse_func is not None:
+            self.data = data_recurse_func()
 
     def _pre_recursion_init(
         self,
