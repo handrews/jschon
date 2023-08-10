@@ -363,3 +363,22 @@ def test_change_additional_uris(catalog):
     assert catalog.get_resource(other_uri) is r
     with pytest.raises(CatalogError):
         catalog.get_resource(dynamic_anchor_uri)
+
+
+def test_invalidate_path_attr_error():
+    r = JSONResource({})
+
+    # First use the cached property so it can be deleted.
+    assert r.pointer_uri.fragment == ''
+    del r.pointer_uri
+
+    # The test is just that it does not throw.
+    assert r._invalidate_path() is None
+
+
+def test_invalidate_path_not_ready_error():
+    r = JSONResource({})
+    r._uri = None
+
+    # The test is just that it does not throw.
+    assert r._invalidate_path() is None

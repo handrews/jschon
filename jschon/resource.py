@@ -508,7 +508,7 @@ class JSONResource(JSON):
             if uri_is_pointer_uri:
                 self.uri = self.pointer_uri
 
-        except (ResourceNotReadyError, AttributeError):
+        except (ResourceURINotSetError, AttributeError):
             pass
 
     @cached_property
