@@ -11,7 +11,9 @@ from jschon.resource import (
     ResourceNotReadyError,
     ResourceURINotSetError,
     RelativeResourceURIError,
+    UnRootedResourceError,
 )
+
 
 class TooSoon(JSONResource):
     def __init__(self, *args, **kwargs):
@@ -125,7 +127,7 @@ class FakeSchema(JSONResource):
 
     def is_resource_root(self):
         if isinstance(self.data, (JSON, Mapping)):
-            return "$id" in self.data or self.parent_in_resource is None
+            return "$id" in self.data or self.parent is None
         return self.parent is None
 
 
@@ -525,6 +527,11 @@ def test_mixed_document():
         assert array_node.pointer_uri == array_node.base_uri.copy(
             fragment=array_node.path.uri_fragment(),
         )
+
+
+def test_document_root_not_resource_node():
+    with pytest.raises(UnRootedResourceError):
+        JSON({"foo": {"bar": 42}}, itemclass=JSONResource)
 
 
 def test_child_resource_types():

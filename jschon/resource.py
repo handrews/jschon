@@ -21,6 +21,7 @@ __all__ = [
     'ResourceNotReadyError',
     'ResourceURINotSetError',
     'RelativeResourceURIError',
+    'UnRootedResourceError',
 ]
 
 
@@ -38,6 +39,16 @@ class ResourceURINotSetError(ResourceError):
 
 class RelativeResourceURIError(ResourceError):
     """Raised when attempting to set a URI to a relative URI-reference without an available base URI."""
+
+
+class UnRootedResourceError(ResourceError):
+    """Raised when there is no :class:`JSONResource` root in the resource.
+
+    This can happen if neither the current node nor any of its ancestors
+    are explicitly marked as resoruce roots in some way, and the document
+    root node, which is the default resource root, is not
+    a :class:`JSONResource` instance.
+    """
 
 
 @dataclass(frozen=True)
@@ -281,7 +292,9 @@ class JSONResource(JSON):
             in which this resource is stored.
         """
         try:
-            self.parent, self.path, self.document_root, self.resource_root
+            # This ensures we have a valid resource root, which we should
+            # know by now, and that the parent structure is initialized.
+            self.resource_root
         except AttributeError:
             raise ResourceNotReadyError()
 
@@ -366,16 +379,20 @@ class JSONResource(JSON):
             candidate = candidate.parent_in_resource
 
         # Without an explicit resource root, the document root is the
-        # implicit resource root, even if it is not a JSONResource node.
+        # implicit resource root.
+        if not isinstance(self.document_root, JSONResource):
+            raise UnRootedResourceError()
+
         return self.document_root
 
     def is_resource_root(self) -> bool:
-        """True if no parent in the document is part of this same resource.
+        """True if this node is at the root of a distinct resource.
 
-        Classes for documents that can contain multiple resources need to
-        override this.
+        This base class defines resource_root-ness to be equivalent
+        to :attr:`document_root`.  Resources that can have non-document-root
+        resource roots must subclass and override this method.
         """
-        return self.parent_in_resource is None
+        return self.parent is None
 
     # TODO: This assumes that a node will know whether it is a resource root
     #       before setting a new absolute-URI (and therefore base URI).
