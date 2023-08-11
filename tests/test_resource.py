@@ -1,3 +1,4 @@
+from functools import cached_property
 import urllib.parse
 from typing import Mapping
 
@@ -12,13 +13,8 @@ from jschon.resource import (
     ResourceURINotSetError,
     RelativeResourceURIError,
     UnRootedResourceError,
+    InconsistentResourceRootError,
 )
-
-
-class TooSoon(JSONResource):
-    def __init__(self, *args, **kwargs):
-        # Generate ResourceNotReadyError
-        self._pre_recursion_init(*args, **kwargs)
 
 
 class UnSet(JSONResource):
@@ -215,6 +211,11 @@ def test_catalog_and_cacheid():
 
 
 def test_resource_not_ready():
+    class TooSoon(JSONResource):
+        def __init__(self, *args, **kwargs):
+            # Generate ResourceNotReadyError
+            self._pre_recursion_init(*args, **kwargs)
+
     with pytest.raises(ResourceNotReadyError):
         TooSoon()
 
@@ -532,6 +533,32 @@ def test_mixed_document():
 def test_document_root_not_resource_node():
     with pytest.raises(UnRootedResourceError):
         JSON({"foo": {"bar": 42}}, itemclass=JSONResource)
+
+
+def test_root_is_not_root():
+    class RootAlwaysFalse(JSONResource):
+        def is_resource_root(self):
+            return False
+
+        @cached_property
+        def resource_root(self):
+            return self.document_root
+
+    with pytest.raises(InconsistentResourceRootError):
+        RootAlwaysFalse({})
+
+
+def test_false_root_claim():
+    class RootAlwaysTrue(JSONResource):
+        def is_resource_root(self):
+            return True
+
+        @cached_property
+        def resource_root(self):
+            return self.document_root
+
+    with pytest.raises(InconsistentResourceRootError):
+        RootAlwaysTrue({'foo': 'bar'})
 
 
 def test_child_resource_types():

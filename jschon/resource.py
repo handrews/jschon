@@ -21,6 +21,7 @@ __all__ = [
     'ResourceNotReadyError',
     'ResourceURINotSetError',
     'RelativeResourceURIError',
+    'InconsistentResourceRootError',
     'UnRootedResourceError',
 ]
 
@@ -39,6 +40,10 @@ class ResourceURINotSetError(ResourceError):
 
 class RelativeResourceURIError(ResourceError):
     """Raised when attempting to set a URI to a relative URI-reference without an available base URI."""
+
+
+class InconsistentResourceRootError(ResourceError):
+    """Raised when :attr:`resource_root` and :meth:`is_resource_root` disagree during instantiation."""
 
 
 class UnRootedResourceError(ResourceError):
@@ -242,7 +247,7 @@ class JSONResource(JSON):
         self._tentative_additional_uris: Set[URI] = additional_uris
 
         if itemclass is None:
-            itemclass = JSONResource
+            itemclass = type(self)
         super().__init__(
             value,
             parent=parent,
@@ -294,7 +299,12 @@ class JSONResource(JSON):
         try:
             # This ensures we have a valid resource root, which we should
             # know by now, and that the parent structure is initialized.
-            self.resource_root
+            if (
+                (not self.resource_root.is_resource_root()) or
+                (self.is_resource_root() and self.resource_root is not self)
+            ):
+                raise InconsistentResourceRootError()
+
         except AttributeError:
             raise ResourceNotReadyError()
 
@@ -306,10 +316,6 @@ class JSONResource(JSON):
         self.cacheid: Hashable = cacheid
         self.references_resolved: bool = False
         
-        # TODO: Support an initial base URI.  In practice this is
-        #       not currently needed as relative "$id"s are handled
-        #       after initialization.
-        # TODO: Done?
         uri = self._tentative_uri
         if uri is not None and not uri.has_absolute_base():
             raise RelativeResourceURIError()
@@ -330,7 +336,6 @@ class JSONResource(JSON):
                 return candidate
             current = candidate
         return candidate
-
 
     @classmethod
     def _find_child_resource_nodes(cls, node) -> Generator[JSONResource]:
@@ -378,12 +383,7 @@ class JSONResource(JSON):
                 return candidate
             candidate = candidate.parent_in_resource
 
-        # Without an explicit resource root, the document root is the
-        # implicit resource root.
-        if not isinstance(self.document_root, JSONResource):
-            raise UnRootedResourceError()
-
-        return self.document_root
+        raise UnRootedResourceError()
 
     def is_resource_root(self) -> bool:
         """True if this node is at the root of a distinct resource.
