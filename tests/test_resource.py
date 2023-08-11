@@ -571,3 +571,7 @@ def test_child_resource_types():
     crr = list(doc.child_resource_roots)
     assert len(crr) == 1
     assert crr[0] is node_b
+
+    # Test that these functions/properties work for embedded roots
+    assert crr[0].is_resource_root()
+    assert crr[0].resource_root is crr[0]
