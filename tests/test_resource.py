@@ -137,7 +137,7 @@ def test_constructor_defaults(cls):
     assert jr.parent_in_resource is None
     assert jr.resource_root is jr
     assert jr.is_resource_root() is True
-    assert list(jr.child_resource_nodes) == [('foo', jr['foo'])]
+    assert list(jr.child_resource_nodes) == [jr['foo']]
 
     assert type(jr['foo']) is cls
     assert jr['foo'].path == JSONPointer('/foo')
@@ -145,7 +145,7 @@ def test_constructor_defaults(cls):
     assert jr['foo'].parent_in_resource is jr['foo'].parent
     assert jr['foo'].resource_root is jr
     assert jr['foo'].is_resource_root() is False
-    assert list(jr['foo'].child_resource_nodes) == [(0, jr['foo'][0])]
+    assert list(jr['foo'].child_resource_nodes) == [jr['foo'][0]]
 
     assert type(jr['foo'][0]) is cls
     assert jr['foo'][0].path == JSONPointer('/foo/0')
@@ -436,7 +436,7 @@ def test_mixed_document():
     assert doc.resource_root is doc
     assert doc.parent_in_resource is None
     assert {
-        node.uri for key, node in doc.child_resource_nodes
+        node.uri for node in doc.child_resource_nodes
     } == {node_b.uri}
 
     assert not node_b.is_resource_root()
@@ -444,7 +444,7 @@ def test_mixed_document():
     assert node_b.parent is node_a
     assert node_b.parent_in_resource is doc
     assert {
-        node.uri for key, node in node_b.child_resource_nodes
+        node.uri for node in node_b.child_resource_nodes
     } == {node_d.uri, node_e.uri}
     assert node_b.pointer_uri == node_b.base_uri.copy(
         fragment=node_b.path.uri_fragment(),
@@ -476,8 +476,8 @@ def test_child_resource_types():
 
     cir = list(doc.children_in_resource)
     assert len(cir) == 1
-    assert cir[0][1] is node_a
+    assert cir[0] is node_a
 
     crr = list(doc.child_resource_roots)
     assert len(crr) == 1
-    assert crr[0][1] is node_b
+    assert crr[0] is node_b

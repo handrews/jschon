@@ -326,42 +326,40 @@ class JSONResource(JSON):
 
 
     @classmethod
-    def _find_child_resource_nodes(cls, node) -> Generator[Tuple[Hashable, JSONResource]]:
+    def _find_child_resource_nodes(cls, node) -> Generator[JSONResource]:
         """Returns in-resource nodes including roots of embedded resources.
 
         Implemented as a class method due to intervening non-resource nodes.
         """
         if node.type == 'object':
-            child_iter = node.data.items()
+            child_iter = node.data.values()
         elif node.type == 'array':
-            child_iter = enumerate(node.data)
+            child_iter = iter(node.data)
         else:
             return
 
-        for key, child in child_iter:
+        for child in child_iter:
             if isinstance(child, JSONResource):
-                yield key, child
+                yield child
             else:
                 yield from cls._find_child_resource_nodes(child)
 
     @property
-    def child_resource_nodes(self) -> Generator[Tuple[Hashable, JSONResource]]:
+    def child_resource_nodes(self) -> Generator[JSONResource]:
         yield from self._find_child_resource_nodes(self)
 
     @property
-    def child_resource_roots(self) -> Generator[Tuple[Hashable, JSONResource]]:
+    def child_resource_roots(self) -> Generator[JSONResource]:
         yield from (
-            (key, child)
-            for key, child in self._find_child_resource_nodes(self)
+            child for child in self._find_child_resource_nodes(self)
             if child.is_resource_root()
         )
 
     @property
-    def children_in_resource(self) -> Generator[Tuple[Hashable, JSONResource]]:
+    def children_in_resource(self) -> Generator[JSONResource]:
         """Chidren one in-resource level down, in the same resource."""
         yield from (
-            (key, child)
-            for key, child in self._find_child_resource_nodes(self)
+            child for child in self._find_child_resource_nodes(self)
             if not child.is_resource_root()
         )
 
@@ -429,7 +427,10 @@ class JSONResource(JSON):
         old_uri = self._uri
         old_base = self._base_uri
 
-        if not self.is_resource_root() and uris.base_uri != self.parent_in_resource.base_uri:
+        if (
+            not self.is_resource_root() and
+            uris.base_uri != self.parent_in_resource.base_uri
+        ):
             raise BaseURIConflictError()
 
         self._uri = uris.property_uri
@@ -439,7 +440,7 @@ class JSONResource(JSON):
         self.additional_uris = self.additional_uris | uris.additional_uris
 
         if old_base is not None and old_base != self.base_uri:
-            for key, child in self.children_in_resource:
+            for child in self.children_in_resource:
                 child.uri = self.base_uri.copy(fragment=child.uri.fragment)
 
         if uris.register_uri:
