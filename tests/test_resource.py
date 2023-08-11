@@ -9,8 +9,6 @@ from jschon.resource import (
     ResourceURIs,
     ResourceError,
     ResourceNotReadyError,
-    BaseURIConflictError,
-    URIPointerPathConflictError,
     ResourceURINotSetError,
     RelativeResourceURIError,
 )
@@ -423,28 +421,6 @@ def test_reassign_root_uri_with_children(catalog):
     assert catalog.get_resource(r['foo'][0].uri) is r['foo'][0]
     with pytest.raises(CatalogError):
         catalog.get_resource(original.copy(fragment='/foo/0'))
-
-
-def test_base_uri_conflict():
-    r = JSONResource({'foo': 42})
-    with pytest.raises(BaseURIConflictError):
-        r['foo'].uri = URI('https:not-a-urn.com#/foo')
-
-
-def test_pointer_path_conflict():
-    r = FakeSchema({"a": {"$id": "about:blank", "b": 42}})
-
-    with pytest.raises(URIPointerPathConflictError):
-        r.uri = r.uri.copy(fragment='/foo/bar')
-
-    with pytest.raises(URIPointerPathConflictError):
-        r['a']['b'].uri = r['a'].uri.copy(fragment='')
-
-    # However, setting a URI without a fragment, even
-    # though semantically equivalent to an empty fragment,
-    # is treated as setting a new base URI for a new resource root
-    r['a']['b'].uri = r['a'].uri
-    assert r['a']['b'].uri == r['a'].uri
 
 
 def test_change_additional_uris(catalog):

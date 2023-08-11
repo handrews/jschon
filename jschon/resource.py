@@ -18,11 +18,9 @@ __all__ = [
     'JSONResource',
     'ResourceURIs',
     'ResourceError',
-    'BaseURIConflictError',
     'ResourceNotReadyError',
     'ResourceURINotSetError',
     'RelativeResourceURIError',
-    'URIPointerPathConflictError',
 ]
 
 
@@ -40,14 +38,6 @@ class ResourceURINotSetError(ResourceError):
 
 class RelativeResourceURIError(ResourceError):
     """Raised when attempting to set a URI to a relative URI-reference without an available base URI."""
-
-
-class BaseURIConflictError(ResourceError):
-    """Raised when attempting to set a URI in a way that conflicts with the established base URI for the resource."""
-
-
-class URIPointerPathConflictError(ResourceError):
-    """Raised when trying to set uri with a JSON Pointer that disagrees with the path."""
 
 
 @dataclass(frozen=True)
@@ -92,8 +82,6 @@ class ResourceURIs:
         If ``uri`` is ``None`` and this document node is a resource root,
         a UUID URN is generated for catalog registration purposes.
         """
-        # TODO: should UUID generation check for resource root-ness?
-        # CATALOG, .uri, .ptr_uri
         if uri is None:
             if node.is_resource_root():
                 urn = URI(f'urn:uuid:{uuid4()}')
@@ -428,36 +416,13 @@ class JSONResource(JSON):
 
     @uri.setter
     def uri(self, uri: Optional[URI]) -> None:
-        # if (f := p_uri.fragment) is None or f == '' or f[0] == '/':
-        if uri is not None and (
-            (f := uri.fragment) == '' or (f is not None and f[0] == '/')
-        ):
-            uri_path = (
-                JSONPointer() if f is None
-                else JSONPointer.parse_uri_fragment(f)
-            )
-            resource_path = self.path[len(self.resource_root.path):]
-            if uri_path != resource_path:
-                raise URIPointerPathConflictError(
-                    f"URI JSON Pointer '{uri_path}' conflicts with path "
-                    f"'{resource_path}' from resource root at "
-                    f"'{self.resource_root.path}'",
-                )
-
         uris = ResourceURIs.uris_for(self, uri)
         old_uri = self._uri
         old_base = self._base_uri
 
-        if (
-            not self.is_resource_root() and
-            uris.base_uri != self.parent_in_resource.base_uri
-        ):
-            raise BaseURIConflictError()
-
         self._uri = uris.property_uri
         self._base_uri = uris.base_uri
 
-        # TODO: Might we ever want to unregister existing additional URIs?
         self.additional_uris = self.additional_uris | uris.additional_uris
 
         if old_base is not None and old_base != self.base_uri:
