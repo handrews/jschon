@@ -8,6 +8,7 @@ from typing import Any, ContextManager, Dict, FrozenSet, Generator, Hashable, It
 
 from jschon.exc import JschonError
 from jschon.json import JSON
+from jschon.jsonpointer import JSONPointer
 from jschon.uri import URI
 
 if TYPE_CHECKING:
@@ -21,6 +22,7 @@ __all__ = [
     'ResourceNotReadyError',
     'ResourceURINotSetError',
     'RelativeResourceURIError',
+    'URIPointerPathConflictError',
 ]
 
 
@@ -42,6 +44,10 @@ class RelativeResourceURIError(ResourceError):
 
 class BaseURIConflictError(ResourceError):
     """Raised when attempting to set a URI in a way that conflicts with the established base URI for the resource."""
+
+
+class URIPointerPathConflictError(ResourceError):
+    """Raised when trying to set uri with a JSON Pointer that disagrees with the path."""
 
 
 @dataclass(frozen=True)
@@ -309,7 +315,7 @@ class JSONResource(JSON):
         self.uri = uri
         self.additional_uris |= self._tentative_additional_uris
 
-    @property
+    @cached_property
     def parent_in_resource(self) -> JSONResource:
         """Returns the nearest parent node that is of a resource type, if any.
 
@@ -344,18 +350,18 @@ class JSONResource(JSON):
             else:
                 yield from cls._find_child_resource_nodes(child)
 
-    @property
+    @cached_property
     def child_resource_nodes(self) -> Generator[JSONResource]:
         yield from self._find_child_resource_nodes(self)
 
-    @property
+    @cached_property
     def child_resource_roots(self) -> Generator[JSONResource]:
         yield from (
             child for child in self._find_child_resource_nodes(self)
             if child.is_resource_root()
         )
 
-    @property
+    @cached_property
     def children_in_resource(self) -> Generator[JSONResource]:
         """Chidren one in-resource level down, in the same resource."""
         yield from (
@@ -363,17 +369,16 @@ class JSONResource(JSON):
             if not child.is_resource_root()
         )
 
-    @property
+    @cached_property
     def resource_root(self) -> JSONResource:
         candidate = self
         while (next_candidate := candidate.parent_in_resource) is not None:
-            assert isinstance(next_candidate, JSONResource), f"{next_candidate} | {next_candidate.path}"
             if next_candidate.is_resource_root():
                 return next_candidate
             candidate = next_candidate
 
         # Without an explicit resource root, the document root is the
-        # implicit resource root.
+        # implicit resource root, even if it is not a JSONResource node.
         return candidate.document_root
 
     def is_resource_root(self) -> bool:
@@ -423,6 +428,22 @@ class JSONResource(JSON):
 
     @uri.setter
     def uri(self, uri: Optional[URI]) -> None:
+        # if (f := p_uri.fragment) is None or f == '' or f[0] == '/':
+        if uri is not None and (
+            (f := uri.fragment) == '' or (f is not None and f[0] == '/')
+        ):
+            uri_path = (
+                JSONPointer() if f is None
+                else JSONPointer.parse_uri_fragment(f)
+            )
+            resource_path = self.path[len(self.resource_root.path):]
+            if uri_path != resource_path:
+                raise URIPointerPathConflictError(
+                    f"URI JSON Pointer '{uri_path}' conflicts with path "
+                    f"'{resource_path}' from resource root at "
+                    f"'{self.resource_root.path}'",
+                )
+
         uris = ResourceURIs.uris_for(self, uri)
         old_uri = self._uri
         old_base = self._base_uri
@@ -501,17 +522,33 @@ class JSONResource(JSON):
 
         self._additional_uris = frozenset(uris)
 
+    def _invalidate_value(self) -> None:
+        for attr in (
+            'child_resource_nodes',
+            'child_resource_roots',
+            'children_in_resource',
+        ):
+            try:
+                delattr(self, attr)
+            except AttributeError:
+                pass
+        super()._invalidate_value()
+
     def _invalidate_path(self) -> None:
-        super()._invalidate_path()
         try:
             uri_is_pointer_uri = self.pointer_uri == self.uri
-            del self.pointer_uri
+        except (ResourceURINotSetError):
+            uri_is_pointer_uri = False
 
-            if uri_is_pointer_uri:
-                self.uri = self.pointer_uri
+        for attr in ('pointer_uri', 'parent_in_resource', 'resource_root'):
+            try:
+                delattr(self, attr)
+            except (ResourceURINotSetError, AttributeError):
+                pass
 
-        except (ResourceURINotSetError, AttributeError):
-            pass
+        super()._invalidate_path()
+        if uri_is_pointer_uri:
+            self.uri = self.pointer_uri
 
     @cached_property
     def pointer_uri(self) -> URI:

@@ -1,4 +1,5 @@
 import urllib.parse
+from typing import Mapping
 
 import pytest
 
@@ -9,6 +10,7 @@ from jschon.resource import (
     ResourceError,
     ResourceNotReadyError,
     BaseURIConflictError,
+    URIPointerPathConflictError,
     ResourceURINotSetError,
     RelativeResourceURIError,
 )
@@ -53,7 +55,7 @@ class FakeSchema(JSONResource):
             base_uri = uri.copy(fragment=None)
 
         additional_uris = set()
-        if "$id" in value:
+        if isinstance(value, Mapping) and "$id" in value:
             id_uri_ref = URI(value["$id"])
 
             assert id_uri_ref.fragment in (None, '')
@@ -72,16 +74,17 @@ class FakeSchema(JSONResource):
             base_uri = uri.copy(fragment=None)
 
         anchor_uris = []
-        for frag_kwd in ("$anchor", "$dynamicAnchor"):
-            if frag_kwd in value:
-                anchor_uris.append(
-                    base_uri.copy(
-                        fragment=urllib.parse.quote(
-                            value[frag_kwd],
-                            safe="!$&'()*+,;=@:/?",
+        if isinstance(value, Mapping):
+            for frag_kwd in ("$anchor", "$dynamicAnchor"):
+                if frag_kwd in value:
+                    anchor_uris.append(
+                        base_uri.copy(
+                            fragment=urllib.parse.quote(
+                                value[frag_kwd],
+                                safe="!$&'()*+,;=@:/?",
+                            )
                         )
                     )
-                )
         if uri is None and anchor_uris:
             # We don't have an absolute-URI, take the first anchor URI instead.
             uri = anchor_uris[0]
@@ -108,8 +111,24 @@ class FakeSchema(JSONResource):
             **kwargs,
         )
 
+    def __setitem__(self, index, obj):
+        super().__setitem__(index, obj)
+        if index == '$id':
+            id_uri = URI(obj)
+            if id_uri.scheme is None:
+                if (p := self.parent_in_resource) is not None:
+                    id_uri = id_uri.resolve(p.base_uri)
+                else:
+                    # our past base URI was the base for the whole
+                    # resource, and close enough for testing purposes
+                    # even if potentially not technically correct.
+                    id_uri = id_uri.resolve(self.base_uri)
+            self.uri = URI(obj)
+
     def is_resource_root(self):
-        return "$id" in self.data or self.parent_in_resource is None
+        if isinstance(self.data, (JSON, Mapping)):
+            return "$id" in self.data or self.parent_in_resource is None
+        return self.parent is None
 
 
 class AlternatingResource(FakeSchema):
@@ -199,14 +218,81 @@ def test_resource_not_ready():
     with pytest.raises(ResourceNotReadyError):
         TooSoon()
 
+
 @pytest.mark.parametrize(
     'attr',
     ('uri', 'pointer_uri', 'base_uri'),
 )
 def test_uri_not_set(attr):
     r = UnSet({})
+
     with pytest.raises(ResourceURINotSetError):
         getattr(r, attr)
+
+
+def test_invalidate_unset_caches():
+    r = UnSet({})
+
+    # These should not throw
+    # For _invalidate_path with pointer_uri, this only tests
+    # the ResourceNotSetError path.  See test_invalidate_caches()
+    # for testing the AttributeError path.
+    assert r._invalidate_path() is None
+    assert r._invalidate_value() is None
+
+
+def test_invalidate_caches():
+    # This produces:
+    #   * a root node with a non-JSON Pointer uri attribute
+    #   * a non-root node with a JSON Pointer uri attribute
+    #   * a non-document-root resource root with a non-JSON Pointer uri attr
+    r = FakeSchema([42, {"$id": "https://whatever.com"}])
+
+    # Use id() because JSON.__eq__() tests for JSON value equality
+    # and we want to verify node identity.
+    get_attrs = lambda node: {
+        'path': {
+            'pointer_uri': node.pointer_uri,
+            'resource_root': id(node.resource_root),
+            'parent_in_resource': id(node.parent_in_resource),
+        },
+        'value': {
+            'child_resource_nodes': [id(c) for c in node.child_resource_nodes],
+            'child_resource_roots': [id(c) for c in node.child_resource_roots],
+            'children_in_resource': [id(c) for c in node.children_in_resource],
+        },
+    }
+    old_attrs = {}
+    nodes = (r, r[0], r[1], r[1]['$id'])
+    nodes = [r[0]]
+    for node in nodes:
+        # Nodes are not hashable, use id()
+        old_attrs[id(node)] = get_attrs(node)
+
+    path_attr_names = list(old_attrs.values())[0]['path'].keys()
+    value_attr_names = list(old_attrs.values())[0]['value'].keys()
+
+    for node in nodes:
+        frag = node.uri.fragment
+        frag_is_pointer = frag == '' or frag is not None and frag[0] == '/'
+
+        for group, test_names, other_names in (
+            ('path', path_attr_names, value_attr_names),
+            ('value', value_attr_names, path_attr_names),
+        ):
+            getattr(node, f'_invalidate_{group}')()
+            for attr in test_names:
+                if group == 'path' and frag_is_pointer:
+                    # For pointer fragments, the properties are revived before
+                    # the end of _invalidate_path(), so this should not raise.
+                    assert delattr(node, attr) is None
+                else:
+                    # hasattr() revives the cached property, so only
+                    # by using delattr() can we see if it was already deleted.
+                    with pytest.raises(AttributeError):
+                        delattr(node, attr)
+
+            assert get_attrs(node) == old_attrs[id(node)]
 
 
 def test_relative_base_error():
@@ -305,18 +391,6 @@ def test_non_root_json_pointer_uri():
     assert r['foo'].uri == base.copy(fragment=r['foo'].path.uri_fragment())
 
 
-@pytest.fixture
-def mixed_document():
-    root_node = JSONResource({})
-    root_node['plain_node'] = JSON({}, itemclass=JSONResource)
-    root_node['plain_node']['resource_node'] = JSONResource({})
-    assert root_node.path == JSONPointer()
-    assert root_node['plain_node'].path == JSONPointer('/plain_node')
-    assert root_node['plain_node']['resource_node'].path == JSONPointer('/plain_node/resource_node')
-
-    return root_node
-
-
 def test_reassign_root_uri_with_children(catalog):
     original = URI('tag:example.com,2023:one')
     new = URI('tag:example.com,2023:two')
@@ -355,6 +429,22 @@ def test_base_uri_conflict():
     r = JSONResource({'foo': 42})
     with pytest.raises(BaseURIConflictError):
         r['foo'].uri = URI('https:not-a-urn.com#/foo')
+
+
+def test_pointer_path_conflict():
+    r = FakeSchema({"a": {"$id": "about:blank", "b": 42}})
+
+    with pytest.raises(URIPointerPathConflictError):
+        r.uri = r.uri.copy(fragment='/foo/bar')
+
+    with pytest.raises(URIPointerPathConflictError):
+        r['a']['b'].uri = r['a'].uri.copy(fragment='')
+
+    # However, setting a URI without a fragment, even
+    # though semantically equivalent to an empty fragment,
+    # is treated as setting a new base URI for a new resource root
+    r['a']['b'].uri = r['a'].uri
+    assert r['a']['b'].uri == r['a'].uri
 
 
 def test_change_additional_uris(catalog):
