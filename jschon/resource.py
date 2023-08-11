@@ -372,14 +372,14 @@ class JSONResource(JSON):
     @cached_property
     def resource_root(self) -> JSONResource:
         candidate = self
-        while (next_candidate := candidate.parent_in_resource) is not None:
-            if next_candidate.is_resource_root():
-                return next_candidate
-            candidate = next_candidate
+        while candidate is not None:
+            if candidate.is_resource_root():
+                return candidate
+            candidate = candidate.parent_in_resource
 
         # Without an explicit resource root, the document root is the
         # implicit resource root, even if it is not a JSONResource node.
-        return candidate.document_root
+        return self.document_root
 
     def is_resource_root(self) -> bool:
         """True if no parent in the document is part of this same resource.
