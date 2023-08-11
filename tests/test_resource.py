@@ -107,6 +107,18 @@ class FakeSchema(JSONResource):
         return "$id" in self.data or self.parent_in_resource is None
 
 
+class AlternatingResource(JSONResource):
+    def __init__(self, *args, **kwargs):
+        kwargs['itemclass'] = NonResourceSpacer
+        super().__init__(*args, **kwargs)
+
+
+class NonResourceSpacer(JSON):
+    def __init__(self, *args, **kwargs):
+        kwargs['itemclass'] = AlternatingResource
+        super().__init__(*args, **kwargs)
+
+
 # JSONResource to test the actual defaults of the base class,
 # FakeSchema because its is_resource_root() accesses parent information.
 @pytest.mark.parametrize('cls', (JSONResource, FakeSchema))
@@ -120,6 +132,7 @@ def test_constructor_defaults(cls):
     assert jr.parent_in_resource is None
     assert jr.resource_root is jr
     assert jr.is_resource_root() is True
+    assert list(jr.child_resource_nodes) == [('foo', jr['foo'])]
 
     assert type(jr['foo']) is cls
     assert jr['foo'].path == JSONPointer('/foo')
@@ -127,6 +140,7 @@ def test_constructor_defaults(cls):
     assert jr['foo'].parent_in_resource is jr['foo'].parent
     assert jr['foo'].resource_root is jr
     assert jr['foo'].is_resource_root() is False
+    assert list(jr['foo'].child_resource_nodes) == [(0, jr['foo'][0])]
 
     assert type(jr['foo'][0]) is cls
     assert jr['foo'][0].path == JSONPointer('/foo/0')
@@ -134,6 +148,7 @@ def test_constructor_defaults(cls):
     assert jr['foo'][0].parent_in_resource is jr['foo'][0].parent
     assert jr['foo'][0].resource_root is jr
     assert jr['foo'][0].is_resource_root() is False
+    assert list(jr['foo'][0].child_resource_nodes) == []
 
     assert jr.catalog == Catalog.get_catalog()
     assert jr.cacheid == 'default'
@@ -395,3 +410,47 @@ def test_invalidate_path_not_ready_error():
 
     # The test is just that it does not throw.
     assert r._invalidate_path() is None
+
+
+def test_mixed_document():
+    doc = AlternatingResource({'a': {'b': {'c': ['d', 'e']}}})
+    node_a = doc['a']
+    node_b = doc['a']['b']
+    node_c = doc['a']['b']['c']
+    node_d = doc['a']['b']['c'][0]
+    node_e = doc['a']['b']['c'][1]
+
+    assert type(doc) is AlternatingResource
+    assert type(node_a) is NonResourceSpacer
+    assert type(node_b) is AlternatingResource
+    assert type(node_c) is NonResourceSpacer
+    assert type(node_d) is AlternatingResource
+    assert type(node_e) is AlternatingResource
+
+    assert doc.is_resource_root()
+    assert doc.resource_root is doc
+    assert doc.parent_in_resource is None
+    assert {
+        node.uri for key, node in doc.child_resource_nodes
+    } == {node_b.uri}
+
+    assert not node_b.is_resource_root()
+    assert node_b.resource_root is doc
+    assert node_b.parent is node_a
+    assert node_b.parent_in_resource is doc
+    assert {
+        node.uri for key, node in node_b.child_resource_nodes
+    } == {node_d.uri, node_e.uri}
+    assert node_b.pointer_uri == node_b.base_uri.copy(
+        fragment=node_b.path.uri_fragment(),
+    )
+
+    for array_node in node_d, node_e:
+        assert not array_node.is_resource_root()
+        assert array_node.resource_root is doc
+        assert array_node.parent is node_c
+        assert array_node.parent_in_resource is node_b
+        assert set(array_node.child_resource_nodes) == set()
+        assert array_node.pointer_uri == array_node.base_uri.copy(
+            fragment=array_node.path.uri_fragment(),
+        )

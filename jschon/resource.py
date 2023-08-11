@@ -315,7 +315,6 @@ class JSONResource(JSON):
 
         The parent-in-resource may be of a different 
         """
-        return self.parent
         candidate = None
         current = self
 
@@ -323,7 +322,8 @@ class JSONResource(JSON):
             if isinstance(candidate, JSONResource):
                 return candidate
             current = candidate
-        return current
+        return candidate
+
 
     @classmethod
     def _find_child_resource_nodes(cls, node) -> Generator[Tuple[Hashable, JSONResource]]:
@@ -369,6 +369,7 @@ class JSONResource(JSON):
     def resource_root(self) -> JSONResource:
         candidate = self
         while (next_candidate := candidate.parent_in_resource) is not None:
+            assert isinstance(next_candidate, JSONResource), f"{next_candidate} | {next_candidate.path}"
             if next_candidate.is_resource_root():
                 return next_candidate
             candidate = next_candidate
@@ -428,7 +429,7 @@ class JSONResource(JSON):
         old_uri = self._uri
         old_base = self._base_uri
 
-        if not self.is_resource_root() and uris.base_uri != self.parent.base_uri:
+        if not self.is_resource_root() and uris.base_uri != self.parent_in_resource.base_uri:
             raise BaseURIConflictError()
 
         self._uri = uris.property_uri
