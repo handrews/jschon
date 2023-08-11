@@ -42,7 +42,12 @@ class FakeSchema(JSONResource):
     # JSON Schema Test Suite.
     def __init__(self, value, *args, parent=None, uri=None, **kwargs):
         if uri is None:
-            base_uri = None if parent is None else parent.base_uri
+            base_uri = None
+            candidate = parent
+            while candidate is not None:
+                if isinstance(candidate, JSONResource):
+                    base_uri = candidate.base_uri
+                candidate = candidate.parent
         else:
             assert uri.scheme
             base_uri = uri.copy(fragment=None)
@@ -107,7 +112,7 @@ class FakeSchema(JSONResource):
         return "$id" in self.data or self.parent_in_resource is None
 
 
-class AlternatingResource(JSONResource):
+class AlternatingResource(FakeSchema):
     def __init__(self, *args, **kwargs):
         kwargs['itemclass'] = NonResourceSpacer
         super().__init__(*args, **kwargs)
@@ -454,3 +459,25 @@ def test_mixed_document():
         assert array_node.pointer_uri == array_node.base_uri.copy(
             fragment=array_node.path.uri_fragment(),
         )
+
+
+def test_child_resource_types():
+    root_base = URI("https://example.com/root")
+    embedded_base = URI("tag:example.com,2023:embedded")
+    doc = AlternatingResource({
+        "$id": str(root_base),
+        "data": {
+            "a": {"$anchor": "a"},
+            "b": {"$id": str(embedded_base)},
+        },
+    })
+    node_a = doc['data']['a']
+    node_b = doc['data']['b']
+
+    cir = list(doc.children_in_resource)
+    assert len(cir) == 1
+    assert cir[0][1] is node_a
+
+    crr = list(doc.child_resource_roots)
+    assert len(crr) == 1
+    assert crr[0][1] is node_b
