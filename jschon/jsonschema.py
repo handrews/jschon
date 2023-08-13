@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from jschon.exceptions import JSONSchemaError
 from jschon.json import JSON, JSONCompatible
+from jschon.resource import JSONResource
 from jschon.jsonpointer import JSONPointer
 from jschon.uri import URI
 
@@ -67,6 +68,14 @@ class JSONSchema(JSON):
         self._uri: Optional[URI] = uri
         self._metaschema_uri: Optional[URI] = metaschema_uri
 
+        self._init_resource_attrs(
+            catalog=catalog,
+            cacheid=cacheid,
+            uri=uri,
+            additional_uris=additional_uris,
+            resolve_references=resolve_references,
+        )
+
         self.keywords: Dict[str, Keyword] = {}
         """A dictionary of the schema's :class:`~jschon.vocabulary.Keyword`
         objects, indexed by keyword name."""
@@ -94,6 +103,9 @@ class JSONSchema(JSON):
         self.key: Optional[str] = key
         """The index of the schema within its parent."""
 
+        # See _is_resource_root() for how this is used.
+        self._initial_value_has_id = False
+
         if isinstance(value, bool):
             self.type = "boolean"
             self.data = value
@@ -101,12 +113,22 @@ class JSONSchema(JSON):
         elif isinstance(value, Mapping):
             self.type = "object"
             self.data = {}
-
-            if self.parent is None and self.uri is None:
-                self.uri = URI(f'urn:uuid:{uuid4()}')
-
+            self._initial_value_has_id = '$id' in value
+            if self.is_resource_root():
+                self._set_initial_base_uri(
+                    in_content_uri=URI(value['$id']),
+                    enclosing_uri=None if parent is None else parent.base_uri,
+                    request_uri=uri,
+                )
+            )
             self._bootstrap(value)
 
+        else:
+            raise TypeError(f"{value=} is not JSONSchema-compatible")
+
+        self._pre_recursion_init(value, uri=uri)
+
+        if self.type == "object":
             kwclasses = {
                 key: kwclass for key in value
                 if (key not in self.keywords and  # skip bootstrapped keywords
@@ -119,10 +141,7 @@ class JSONSchema(JSON):
                 self.data[key] = kw.json
 
             if self.parent is None:
-                self._resolve_references()
-
-        else:
-            raise TypeError(f"{value=} is not JSONSchema-compatible")
+                self.resolve_references()
 
     def _bootstrap(self, value: Mapping[str, JSONCompatible]) -> None:
         from jschon.vocabulary.core import SchemaKeyword, VocabularyKeyword
@@ -150,21 +169,6 @@ class JSONSchema(JSON):
             self.keywords["$id"] = id_kw
             self.data["$id"] = id_kw.json
 
-    def _resolve_references(self) -> None:
-        for kw in self.keywords.values():
-            if hasattr(kw, 'resolve'):
-                kw.resolve()
-            elif isinstance(kw.json, JSONSchema):
-                kw.json._resolve_references()
-            elif kw.json.type == "array":
-                for item in kw.json:
-                    if isinstance(item, JSONSchema):
-                        item._resolve_references()
-            elif kw.json.type == "object":
-                for item in kw.json.values():
-                    if isinstance(item, JSONSchema):
-                        item._resolve_references()
-
     @staticmethod
     def _resolve_dependencies(kwclasses: Dict[str, KeywordClass]) -> Iterator[KeywordClass]:
         dependencies = {
@@ -183,6 +187,21 @@ class JSONSchema(JSON):
                             pass
                     yield kwclass
                     break
+
+    def resolve_references(self) -> None:
+        for kw in self.keywords.values():
+            if hasattr(kw, 'resolve'):
+                kw.resolve()
+            elif isinstance(kw.json, JSONSchema):
+                kw.json.resolve_references()
+            elif kw.json.type == "array":
+                for item in kw.json:
+                    if isinstance(item, JSONSchema):
+                        item.resolve_references()
+            elif kw.json.type == "object":
+                for item in kw.json.values():
+                    if isinstance(item, JSONSchema):
+                        item.resolve_references()
 
     def validate(self) -> Result:
         """Validate the schema against its metaschema."""
@@ -231,6 +250,16 @@ class JSONSchema(JSON):
                 return parent
             parent = parent.parent
 
+    def is_resource_root(self):
+        try:
+            return "$id" in self.keywords or self.parent is None
+        except AttributeError:
+            # During initialization, we need to know whether we are
+            # a resource root before we are able to fully process the
+            # keywords.  This flag can become out-of-date if the value
+            # is changed after initialization, so only use it as a back-up.
+            return self._initial_value_has_id or self.parent is None
+
     @cached_property
     def resource_rootschema(self) -> JSONSchema:
         """The :class:`JSONSchema` at the root of the containing resource.
@@ -238,6 +267,10 @@ class JSONSchema(JSON):
         This is the nearest ancestor (including `self`) containing ``"$id"``,
         or if none exist, it is the same as `self.document_rootschema`.
         """
+        # TODO: keep independent, redirect to resource_root, or just use
+        #       resource_root?  It is slightly nicer to have the return
+        #       type be JSONSchema, but could just narrow the return type
+        #       by overriding resource_root?
         if '$id' in self.keywords:
             return self
         ancestor = self
