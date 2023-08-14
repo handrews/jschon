@@ -128,7 +128,7 @@ class ResourceURIs:
 
         if not uri.has_absolute_base():
             if str(uri) == '':
-                raise DupicateResourceURIError()
+                raise DuplicateResourceURIError()
             if node.is_resource_root():
                 if initial_base_uri is None:
                     initial_base_uri = default_uri_generator()
