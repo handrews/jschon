@@ -253,16 +253,7 @@ class JSONResource(JSON):
         **itemkwargs: Any,
     ) -> None:
 
-        self._init_resource_attributes(catalog, cacheid)
-
-        # Intended for use by _pre_recursion_init() while avoiding
-        # requiring the JSON class to know about URIs in order to
-        # properly calculate child URIs from parent URIs.
-        #
-        # TODO: Should there be a more general "prep itemkwargs"
-        #       hook for handling such things?
-        # self._tentative_uri: Optional[URI] = uri
-        # self._tentative_additional_uris: Set[URI] = additional_uris
+        self._init_resource_attributes(catalog, cacheid, uri, additional_uris)
 
         if itemclass is None:
             itemclass = type(self)
@@ -272,9 +263,9 @@ class JSONResource(JSON):
             key=key,
             itemclass=itemclass,
             # The remaing args are received by JSON in **itemkwargs
-            catalog=catalog,
-            cacheid=cacheid,
-            uri=uri,
+            # catalog=catalog,
+            # cacheid=cacheid,
+            # uri=uri,
             # additional_uris=additional_uris,
             **itemkwargs,
         )
@@ -283,7 +274,16 @@ class JSONResource(JSON):
         if parent is None and resolve_references:
             self.resolve_references()
 
-    def _init_resource_attributes(self, catalog, cacheid):
+    def _init_resource_attributes(self, catalog, cacheid, uri=None, additional_uris=frozenset()):
+        # Intended for use by _pre_recursion_init() while avoiding
+        # requiring the JSON class to know about URIs in order to
+        # properly calculate child URIs from parent URIs.
+        #
+        # TODO: Should there be a more general "prep itemkwargs"
+        #       hook for handling such things?
+        self._tentative_uri: Optional[URI] = uri
+        self._tentative_additional_uris: Set[URI] = additional_uris
+
         self.references_resolved = False
 
         self._uri: Optional[URI] = None
@@ -303,8 +303,8 @@ class JSONResource(JSON):
         *args,
         catalog: Union[Catalog, str] = 'catalog',
         cacheid: Hashable = 'default',
-        uri: Optional[URI] = None,
-        additional_uris: Set[URI] = frozenset(),
+        # uri: Optional[URI] = None,
+        # additional_uris: Set[URI] = frozenset(),
         initial_base_uri: Optional[URI] = None,
         **kwargs,
     ):
@@ -346,6 +346,10 @@ class JSONResource(JSON):
         except AttributeError:
             raise ResourceNotReadyError()
 
+        # uri = uri or self._tentative_uri
+        # additional_uris = additional_uris or self._tentative_additional_uris
+        uri = self._tentative_uri
+        additional_uris = self._tentative_additional_uris
         self._set_uri(uri, initial_base_uri)
         self.additional_uris |= additional_uris
 

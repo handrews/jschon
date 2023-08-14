@@ -51,12 +51,7 @@ class JSONSchema(JSONResource):
         :param key: the index of the schema within its parent; used internally
             when creating a subschema
         """
-        from jschon.catalog import Catalog
-
-        if not isinstance(catalog, Catalog):
-            catalog = Catalog.get_catalog(catalog)
-
-        self._init_resource_attributes(catalog, cacheid)
+        self._init_resource_attributes(catalog, cacheid, uri)
 
         self._metaschema_uri: Optional[URI] = metaschema_uri
 
@@ -103,7 +98,7 @@ class JSONSchema(JSONResource):
 
         # TODO: Bootstrap $anchor/$dynamicAnchor
         self._pre_recursion_init(
-            uri=uri,
+            # uri=uri,
             initial_base_uri=parent.base_uri if self.is_resource_root() and self.parent is not None else None,
         )
         assert self.base_uri is not None
