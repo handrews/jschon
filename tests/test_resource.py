@@ -96,6 +96,7 @@ class FakeSchema(JSONResource):
         additional_uris = set(anchor_uris)
         self.base_uri_from_init = base_uri
 
+        print(f'<{base_uri}> <{uri}> <<{additional_uris}>>')
         if kwargs.get('itemclass') is None:
             kwargs['itemclass'] = FakeSchema
         super().__init__(

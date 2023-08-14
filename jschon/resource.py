@@ -21,6 +21,7 @@ __all__ = [
     'ResourceNotReadyError',
     'ResourceURINotSetError',
     'RelativeResourceURIError',
+    'DuplicateResourceURIError',
     'InconsistentResourceRootError',
     'UnRootedResourceError',
 ]
@@ -42,6 +43,8 @@ class RelativeResourceURIError(ResourceError):
     """Raised when attempting to set a URI to a relative URI-reference without an available base URI."""
 
 
+class DuplicateResourceURIError(ResourceError):
+    """Raised if an empty relative URI is used for a resource root, which produces a duplicate URI of the resource that provided the initial base URI."""
 class InconsistentResourceRootError(ResourceError):
     """Raised when :attr:`resource_root` and :meth:`is_resource_root` disagree during instantiation."""
 
@@ -79,7 +82,14 @@ class ResourceURIs:
         return res_root.uri.copy(fragment=ptr_from_res_root.uri_fragment())
 
     @classmethod
-    def uris_for(cls, node, uri: Optional[URI]) -> ResourceURIs:
+    def uris_for(
+        cls,
+        node,
+        uri: Optional[URI],
+        initial_base_uri: Optional[URI],
+        default_uri_generator: Callable[[], URI] =
+            lambda: URI(f'urn:uuid:{uuid4()}')
+    ) -> ResourceURIs:
         """Determine the URIs for various use cases.
 
         Absolute URIs (without a fragment) and URIs with non-JSON Pointer
@@ -100,11 +110,11 @@ class ResourceURIs:
         """
         if uri is None:
             if node.is_resource_root():
-                urn = URI(f'urn:uuid:{uuid4()}')
+                default = default_uri_generator()
                 return ResourceURIs(
                     register_uri=True,
-                    property_uri=urn,
-                    base_uri=urn,
+                    property_uri=default,
+                    base_uri=default,
                     additional_uris=set(),
                 )
 
@@ -115,6 +125,17 @@ class ResourceURIs:
                 base_uri=node.resource_root.base_uri,
                 additional_uris=set(),
             )
+
+        if not uri.has_absolute_base():
+            if str(uri) == '':
+                raise DupicateResourceURIError()
+            if node.is_resource_root():
+                if initial_base_uri is None:
+                    initial_base_uri = default_uri_generator()
+                base_uri = initial_base_uri
+            else:
+                base_uri = node.resource_root.base_uri
+            uri = uri.resolve(base_uri)
 
         fragment = uri.fragment
         if fragment is None:
@@ -231,11 +252,8 @@ class JSONResource(JSON):
         itemclass: Type[JSON] = None,
         **itemkwargs: Any,
     ) -> None:
-        self.references_resolved = False
 
-        self._uri: Optional[URI] = None
-        self._base_uri: Optional[URI] = None
-        self._additional_uris: FrozenSet[URI] = frozenset()
+        self._init_resource_attributes(catalog, cacheid)
 
         # Intended for use by _pre_recursion_init() while avoiding
         # requiring the JSON class to know about URIs in order to
@@ -243,8 +261,8 @@ class JSONResource(JSON):
         #
         # TODO: Should there be a more general "prep itemkwargs"
         #       hook for handling such things?
-        self._tentative_uri: Optional[URI] = uri
-        self._tentative_additional_uris: Set[URI] = additional_uris
+        # self._tentative_uri: Optional[URI] = uri
+        # self._tentative_additional_uris: Set[URI] = additional_uris
 
         if itemclass is None:
             itemclass = type(self)
@@ -256,6 +274,8 @@ class JSONResource(JSON):
             # The remaing args are received by JSON in **itemkwargs
             catalog=catalog,
             cacheid=cacheid,
+            uri=uri,
+            # additional_uris=additional_uris,
             **itemkwargs,
         )
 
@@ -263,11 +283,29 @@ class JSONResource(JSON):
         if parent is None and resolve_references:
             self.resolve_references()
 
+    def _init_resource_attributes(self, catalog, cacheid):
+        self.references_resolved = False
+
+        self._uri: Optional[URI] = None
+        self._base_uri: Optional[URI] = None
+        self._additional_uris: FrozenSet[URI] = frozenset()
+
+        if isinstance(catalog, str):
+            from jschon.catalog import Catalog
+            catalog = Catalog.get_catalog(catalog)
+
+        self.catalog: Catalog = catalog
+        self.cacheid: Hashable = cacheid
+        self.references_resolved: bool = False
+
     def _pre_recursion_init(
         self,
         *args,
         catalog: Union[Catalog, str] = 'catalog',
         cacheid: Hashable = 'default',
+        uri: Optional[URI] = None,
+        additional_uris: Set[URI] = frozenset(),
+        initial_base_uri: Optional[URI] = None,
         **kwargs,
     ):
         """
@@ -308,19 +346,8 @@ class JSONResource(JSON):
         except AttributeError:
             raise ResourceNotReadyError()
 
-        if isinstance(catalog, str):
-            from jschon.catalog import Catalog
-            catalog = Catalog.get_catalog(catalog)
-
-        self.catalog: Catalog = catalog
-        self.cacheid: Hashable = cacheid
-        self.references_resolved: bool = False
-        
-        uri = self._tentative_uri
-        if uri is not None and not uri.has_absolute_base():
-            raise RelativeResourceURIError()
-        self.uri = uri
-        self.additional_uris |= self._tentative_additional_uris
+        self._set_uri(uri, initial_base_uri)
+        self.additional_uris |= additional_uris
 
     @cached_property
     def parent_in_resource(self) -> JSONResource:
@@ -433,7 +460,10 @@ class JSONResource(JSON):
 
     @uri.setter
     def uri(self, uri: Optional[URI]) -> None:
-        uris = ResourceURIs.uris_for(self, uri)
+        self._set_uri(uri)
+
+    def _set_uri(self, uri, initial_base_uri = None):
+        uris = ResourceURIs.uris_for(self, uri, initial_base_uri)
         old_uri = self._uri
         old_base = self._base_uri
 
@@ -443,6 +473,10 @@ class JSONResource(JSON):
         self.additional_uris = self.additional_uris | uris.additional_uris
 
         if old_base is not None and old_base != self.base_uri:
+            try:
+                del self.pointer_uri
+            except AttributeError:
+                pass
             for child in self.children_in_resource:
                 child.uri = self.base_uri.copy(fragment=child.uri.fragment)
 

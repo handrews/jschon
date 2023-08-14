@@ -22,7 +22,7 @@ __all__ = [
 ]
 
 
-class JSONSchema(JSON):
+class JSONSchema(JSONResource):
     """JSON schema document model."""
 
     def __init__(
@@ -56,25 +56,9 @@ class JSONSchema(JSON):
         if not isinstance(catalog, Catalog):
             catalog = Catalog.get_catalog(catalog)
 
-        self.catalog: Catalog = catalog
-        """The catalog in which the schema is cached."""
+        self._init_resource_attributes(catalog, cacheid)
 
-        self.cacheid: Hashable = cacheid
-        """Schema cache identifier."""
-
-        if uri is not None:
-            catalog.add_schema(uri, self, cacheid=cacheid)
-
-        self._uri: Optional[URI] = uri
         self._metaschema_uri: Optional[URI] = metaschema_uri
-
-        self._init_resource_attrs(
-            catalog=catalog,
-            cacheid=cacheid,
-            uri=uri,
-            additional_uris=additional_uris,
-            resolve_references=resolve_references,
-        )
 
         self.keywords: Dict[str, Keyword] = {}
         """A dictionary of the schema's :class:`~jschon.vocabulary.Keyword`
@@ -114,21 +98,17 @@ class JSONSchema(JSON):
             self.type = "object"
             self.data = {}
             self._initial_value_has_id = '$id' in value
-            if self.is_resource_root():
-                self._set_initial_base_uri(
-                    in_content_uri=URI(value['$id']),
-                    enclosing_uri=None if parent is None else parent.base_uri,
-                    request_uri=uri,
-                )
-            )
-            self._bootstrap(value)
-
         else:
             raise TypeError(f"{value=} is not JSONSchema-compatible")
 
-        self._pre_recursion_init(value, uri=uri)
-
+        # TODO: Bootstrap $anchor/$dynamicAnchor
+        self._pre_recursion_init(
+            uri=uri,
+            initial_base_uri=parent.base_uri if self.is_resource_root() and self.parent is not None else None,
+        )
+        assert self.base_uri is not None
         if self.type == "object":
+            self._bootstrap(value)
             kwclasses = {
                 key: kwclass for key in value
                 if (key not in self.keywords and  # skip bootstrapped keywords
@@ -316,37 +296,6 @@ class JSONSchema(JSON):
     @metaschema_uri.setter
     def metaschema_uri(self, value: Optional[URI]) -> None:
         self._metaschema_uri = value
-
-    @property
-    def base_uri(self) -> Optional[URI]:
-        """The schema's base :class:`~jschon.uri.URI`.
-        
-        The base URI is obtained by searching up the schema tree
-        for a schema URI, and removing any fragment.
-        """
-        if self._uri is not None:
-            return self._uri.copy(fragment=False)
-        if self.parentschema is not None:
-            return self.parentschema.base_uri
-
-    @property
-    def uri(self) -> Optional[URI]:
-        """The :class:`~jschon.uri.URI` identifying the schema.
-
-        Used as the key for caching the schema in the catalog.
-        """
-        return self._uri
-
-    @uri.setter
-    def uri(self, value: Optional[URI]) -> None:
-        if self._uri != value:
-            if self._uri is not None:
-                self.catalog.del_schema(self._uri, cacheid=self.cacheid)
-
-            self._uri = value
-
-            if self._uri is not None:
-                self.catalog.add_schema(self._uri, self, cacheid=self.cacheid)
 
     @property
     def canonical_uri(self) -> Optional[URI]:
