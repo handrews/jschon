@@ -51,7 +51,6 @@ class JSONSchema(JSONResource):
         :param key: the index of the schema within its parent; used internally
             when creating a subschema
         """
-        self._init_resource_attributes(catalog, cacheid, uri)
 
         self._metaschema_uri: Optional[URI] = metaschema_uri
 
@@ -97,11 +96,14 @@ class JSONSchema(JSONResource):
             raise TypeError(f"{value=} is not JSONSchema-compatible")
 
         # TODO: Bootstrap $anchor/$dynamicAnchor
+        # self._init_resource_attributes(catalog, cacheid, uri)
         self._pre_recursion_init(
-            # uri=uri,
+            catalog=catalog,
+            cacheid=cacheid,
+            uri=uri,
             initial_base_uri=parent.base_uri if self.is_resource_root() and self.parent is not None else None,
         )
-        assert self.base_uri is not None
+
         if self.type == "object":
             self._bootstrap(value)
             kwclasses = {

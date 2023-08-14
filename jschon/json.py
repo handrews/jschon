@@ -68,6 +68,7 @@ class JSON(MutableSequence['JSON'], MutableMapping[str, 'JSON']):
             parent: JSON = None,
             key: str = None,
             itemclass: Type[JSON] = None,
+            _pre_recursion_args: Optional[Dict[str, Any]] = None,
             **itemkwargs: Any,
     ):
         """Initialize a :class:`JSON` instance from the given JSON-compatible
@@ -85,6 +86,8 @@ class JSON(MutableSequence['JSON'], MutableMapping[str, 'JSON']):
         :param itemkwargs: keyword arguments to pass to the `itemclass`
             constructor
         """
+        if _pre_recursion_args == None:
+            _pre_recursion_args = {}
 
         self.type: str
         """The JSON type of the instance. One of
@@ -159,11 +162,7 @@ class JSON(MutableSequence['JSON'], MutableMapping[str, 'JSON']):
             raise TypeError(f"{value=} is not JSON-compatible")
 
         self._pre_recursion_init(
-            value,
-            parent=parent,
-            key=key,
-            itemclass=itemclass,
-            **itemkwargs,
+            **_pre_recursion_args,
         )
 
         if data_recurse_func is not None:
@@ -171,12 +170,7 @@ class JSON(MutableSequence['JSON'], MutableMapping[str, 'JSON']):
 
     def _pre_recursion_init(
         self,
-        value: JSONCompatible,
-        *,
-        parent: JSON = None,
-        key: str = None,
-        itemclass: Type[JSON] = None,
-        **itemkwargs: Any,
+        **kwargs: Any,
     ) -> None:
         pass
 
