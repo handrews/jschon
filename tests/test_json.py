@@ -74,6 +74,26 @@ def test_json_create(value):
     assert_json_node(instance, value)
 
 
+def test_json_create_ignore_pre_recursion_args_by_default():
+    # The primary test is that this does not raise any errors.
+    instance_with = JSON(
+        {},
+        pre_recursion_args={'some arbitrary string': 42},
+    )
+    instance_without = JSON({})
+    assert instance_without == instance_with
+
+
+def test_json_create_pre_recursion_args():
+    class PreRecurse(JSON):
+        def pre_recursion_init(self, **kwargs):
+            self.pra = kwargs
+
+    pra = {'this is an arg': 'yay!'}
+    j = PreRecurse({}, pre_recursion_args=pra)
+    assert j.pra == pra
+
+
 @given(json)
 def test_json_loads(value):
     s = jsonlib.dumps(value)
