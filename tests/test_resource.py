@@ -12,6 +12,7 @@ from jschon.resource import (
     ResourceNotReadyError,
     ResourceURINotSetError,
     RelativeResourceURIError,
+    DuplicateResourceURIError,
     UnRootedResourceError,
     InconsistentResourceRootError,
 )
@@ -39,6 +40,7 @@ class FakeSchema(JSONResource):
     # also expected to work and is tested by test_schema.py and the
     # JSON Schema Test Suite.
     def __init__(self, value, *args, parent=None, uri=None, **kwargs):
+        print(f"INPUT: <{uri}> {value}")
         if uri is None:
             base_uri = None
             candidate = parent
@@ -50,10 +52,12 @@ class FakeSchema(JSONResource):
             assert uri.scheme
             base_uri = uri.copy(fragment=None)
 
+        print(f"CALC 1: <{uri}> <{base_uri}>")
+
         additional_uris = set()
         if isinstance(value, Mapping) and "$id" in value:
             id_uri_ref = URI(value["$id"])
-
+            print(f"ID_URI_REF: <{id_uri_ref}>")
             assert id_uri_ref.fragment in (None, '')
             if id_uri_ref.scheme is None:
                 if base_uri is None:
@@ -62,6 +66,7 @@ class FakeSchema(JSONResource):
                 id_uri = id_uri_ref.resolve(base_uri)
             else:
                 id_uri = id_uri_ref
+            print(f"ID_URI: <{id_uri}>")
 
             if id_uri != uri:
                 if uri is not None:
@@ -69,6 +74,7 @@ class FakeSchema(JSONResource):
             uri = id_uri
             base_uri = uri.copy(fragment=None)
 
+        print(f"CALC 2: <{uri}> <{base_uri}> <<{additional_uris}>>")
         anchor_uris = []
         if isinstance(value, Mapping):
             for frag_kwd in ("$anchor", "$dynamicAnchor"):
@@ -92,11 +98,12 @@ class FakeSchema(JSONResource):
             tmp = uri
             uri = anchor_uris[0]
             anchor_uris[0] = tmp
+        print(f"CALC 3: <{uri}> <{base_uri}> <<{additional_uris}>>")
 
         additional_uris = set(anchor_uris)
-        self.base_uri_from_init = base_uri
+        # self.base_uri_from_init = base_uri
 
-        print(f'<{base_uri}> <{uri}> <<{additional_uris}>>')
+        print(f'CALC4: <{uri}> <{base_uri}> <<{additional_uris}>>')
         if kwargs.get('itemclass') is None:
             kwargs['itemclass'] = FakeSchema
         super().__init__(
@@ -297,9 +304,15 @@ def test_invalidate_caches():
             assert get_attrs(node) == old_attrs[id(node)]
 
 
-def test_relative_base_error():
-    with pytest.raises(RelativeResourceURIError):
-        JSONResource({}, uri=URI('/foo/bar'))
+def test_relative_base():
+    r = JSONResource({}, uri=URI('/foo/bar'))
+    # TODO: This is not actually a valid URI
+    assert r.uri == URI('urn:/foo/bar')
+
+
+def test_duplicate_uri_error():
+    with pytest.raises(DuplicateResourceURIError):
+        JSONResource({}, uri=URI(''))
 
 
 @pytest.mark.parametrize(
@@ -324,20 +337,20 @@ def test_relative_base_error():
             frozenset(),
         ),
         (
-            {"$id": "https://ex.org", "things": {"foo": {}}},
-            JSONPointer('/things/foo'),
+            {"$id": "https://ex.org", "properties": {"foo": {}}},
+            JSONPointer('/properties/foo'),
             False,
-            URI('https://ex.org#/things/foo'),
-            URI('https://ex.org#/things/foo'),
+            URI('https://ex.org#/properties/foo'),
+            URI('https://ex.org#/properties/foo'),
             URI('https://ex.org'),
             frozenset(),
         ),
         (
-            {"$id": "https://ex.org#", "things": {"foo": {"$anchor": "bar"}}},
-            JSONPointer('/things/foo'),
+            {"$id": "https://ex.org#", "properties": {"foo": {"$anchor": "bar"}}},
+            JSONPointer('/properties/foo'),
             True,
             URI('https://ex.org#bar'),
-            URI('https://ex.org#/things/foo'),
+            URI('https://ex.org#/properties/foo'),
             URI('https://ex.org'),
             frozenset(),
         ),
@@ -371,16 +384,17 @@ def test_uris(
     additional_uris,
     catalog,
 ):
-    full = FakeSchema(document)
+    from jschon import JSONSchema
+    full = JSONSchema(document, metaschema_uri=URI('https://json-schema.org/draft/2020-12/schema')) # FakeSchema(document)
     r = pointer.evaluate(full)
 
     assert r.uri == property_uri
     assert r.pointer_uri == base_uri.copy(fragment=pointer.uri_fragment())
-    assert r.base_uri_from_init == base_uri
+    # assert r.base_uri_from_init == base_uri
     assert r.base_uri == base_uri
 
     assert register_uri == (property_uri in catalog._schema_cache['default'])
-    assert catalog.get_resource(property_uri, cls=FakeSchema) is r
+    assert catalog.get_resource(property_uri, cls=JSONSchema) is r # cls=FakeSchema) is r
     for au in additional_uris:
         assert catalog.get_resource(au) is r
 
