@@ -68,15 +68,18 @@ class JSON(MutableSequence['JSON'], MutableMapping[str, 'JSON']):
             parent: JSON = None,
             key: str = None,
             itemclass: Type[JSON] = None,
+            pre_recursion_args: Optional[Dict[str, Any]] = None,
             **itemkwargs: Any,
     ):
         """Initialize a :class:`JSON` instance from the given JSON-compatible
         `value`.
 
-        The `parent`, `key`, `itemclass` and `itemkwargs` parameters should
-        typically only be used in the construction of compound :class:`JSON`
-        documents by :class:`JSON` subclasses.  The use of these parameters
-        can be customized in subclasses by overriding
+        The `parent`, `key`, `pre_recursion_args`, `itemclass` and `itemkwargs`
+        parameters should typically only be used in the construction of
+        compound :class:`JSON` documents by :class:`JSON` subclasses.
+
+        The use of the `parent`, `key`, `itemclass`, and `itemkwargs`
+        parameters can be customized in subclasses by overriding
         :meth:`instantiate_sequence` and :meth:`instantiate_mapping`, for
         example if some child elemnts need to be instances of a different
         class than others.  Child elements instantiated in this way should
@@ -86,11 +89,15 @@ class JSON(MutableSequence['JSON'], MutableMapping[str, 'JSON']):
         :param value: a JSON-compatible Python object
         :param parent: the parent node of the instance
         :param key: the index of the instance within its parent
+        :param pre_recursion_args: arguments to pass to
+            :meth:`pre_recursion_init` during construction
         :param itemclass: the :class:`JSON` subclass used to instantiate
             child nodes of arrays and objects (default: :class:`JSON`)
         :param itemkwargs: keyword arguments to pass to the `itemclass`
             constructor
         """
+        if pre_recursion_args == None:
+            pre_recursion_args = {}
 
         self.type: str
         """The JSON type of the instance. One of
@@ -98,7 +105,7 @@ class JSON(MutableSequence['JSON'], MutableMapping[str, 'JSON']):
 
         self.data: Union[None, bool, int, float, str, List[JSON], Dict[str, JSON]]
         """The instance data.
-        
+
         =========   ===============
         JSON type   data type
         =========   ===============
@@ -123,32 +130,62 @@ class JSON(MutableSequence['JSON'], MutableMapping[str, 'JSON']):
         self.itemkwargs: Dict[str, Any] = itemkwargs
         """Keyword arguments to the :attr:`itemclass` constructor."""
 
+        # During recursive construction, the data attribute is by definition
+        # incompletely initialized.  Setting it to the value up front is
+        # correct for scalar types and allows setting the type attribute and
+        # allows for limited use of the data attribute on parent nodes during
+        # child node construction.  While not an ideal state, it is closer
+        # to the proper state for data than not having the attribute at all.
+        #
+        # Proper recursive initialiazation is stored as a callable and carried
+        # out after the pre-recursion hook is executed.
+        self.data = value
+        instantiate_sequence = False
+        instantiate_mapping = False
+
         if value is None:
             self.type = "null"
-            self.data = None
 
         elif isinstance(value, bool):
             self.type = "boolean"
-            self.data = value
 
         elif isinstance(value, (int, float)):
             self.type = "number"
-            self.data = value
 
         elif isinstance(value, str):
             self.type = "string"
-            self.data = value
 
         elif isinstance(value, Sequence):
             self.type = "array"
-            self.data = self.instantiate_sequence(value)
+            instantiate_sequence = True
 
         elif isinstance(value, Mapping):
             self.type = "object"
-            self.data = self.instantiate_mapping(value)
+            instantiate_mapping = True
 
         else:
             raise TypeError(f"{value=} is not JSON-compatible")
+
+        self.pre_recursion_init(
+            **pre_recursion_args,
+        )
+
+        if instantiate_mapping:
+            self.data = self.instantiate_mapping(value)
+        elif instantiate_sequence:
+            self.data = self.instantiate_sequence(value)
+
+    def pre_recursion_init(self, **kwargs: Any) -> None:
+        """
+        Initialization code run between parent and child initialization.
+
+        Subclasses that need to run code after the basic attributes of
+        this node and its parant nodes have been initialized, but before
+        child nodes are initialized, should override this method and
+        pass its arguments trhough the ``pre_recursion_args`` parameter
+        to the constructor.
+        """
+        pass
 
     def instantiate_sequence(
         self,
