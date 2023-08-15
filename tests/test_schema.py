@@ -5,6 +5,7 @@ from hypothesis import given
 from pytest import param as p
 
 from jschon import JSON, JSONPointer, JSONSchema, URI, create_catalog
+from jschon.resource import JSONResource
 from jschon.json import false, true
 from tests import example_invalid, example_schema, example_valid, metaschema_uri_2019_09, metaschema_uri_2020_12
 from tests.strategies import *
@@ -47,7 +48,7 @@ def test_invalid_schema(example):
 
 @pytest.fixture
 def weird_parent_schema(catalog):
-    return JSON(
+    return JSONResource(
         {
             "foo": {
                 "$schema": "https://json-schema.org/draft/2020-12/schema",

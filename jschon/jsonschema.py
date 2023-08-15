@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from jschon.exceptions import JSONSchemaError
 from jschon.json import JSON, JSONCompatible
+from jschon.resource import JSONResource
 from jschon.jsonpointer import JSONPointer
 from jschon.uri import URI
 
@@ -21,7 +22,7 @@ __all__ = [
 ]
 
 
-class JSONSchema(JSON):
+class JSONSchema(JSONResource):
     """JSON schema document model."""
 
     def __init__(
@@ -50,21 +51,7 @@ class JSONSchema(JSON):
         :param key: the index of the schema within its parent; used internally
             when creating a subschema
         """
-        from jschon.catalog import Catalog
 
-        if not isinstance(catalog, Catalog):
-            catalog = Catalog.get_catalog(catalog)
-
-        self.catalog: Catalog = catalog
-        """The catalog in which the schema is cached."""
-
-        self.cacheid: Hashable = cacheid
-        """Schema cache identifier."""
-
-        if uri is not None:
-            catalog.add_schema(uri, self, cacheid=cacheid)
-
-        self._uri: Optional[URI] = uri
         self._metaschema_uri: Optional[URI] = metaschema_uri
 
         self.keywords: Dict[str, Keyword] = {}
@@ -79,7 +66,7 @@ class JSONSchema(JSON):
 
         self.data: Union[bool, Dict[str, JSON]]
         """The schema data.
-        
+
         =========   ===============
         JSON type   data type
         =========   ===============
@@ -94,6 +81,9 @@ class JSONSchema(JSON):
         self.key: Optional[str] = key
         """The index of the schema within its parent."""
 
+        # See _is_resource_root() for how this is used.
+        self._initial_value_has_id = False
+
         if isinstance(value, bool):
             self.type = "boolean"
             self.data = value
@@ -101,12 +91,21 @@ class JSONSchema(JSON):
         elif isinstance(value, Mapping):
             self.type = "object"
             self.data = {}
+            self._initial_value_has_id = '$id' in value
+        else:
+            raise TypeError(f"{value=} is not JSONSchema-compatible")
 
-            if self.parent is None and self.uri is None:
-                self.uri = URI(f'urn:uuid:{uuid4()}')
+        # TODO: Bootstrap $anchor/$dynamicAnchor
+        # self._init_resource_attributes(catalog, cacheid, uri)
+        self.pre_recursion_init(
+            catalog=catalog,
+            cacheid=cacheid,
+            uri=uri,
+            initial_base_uri=parent.base_uri if self.is_resource_root() and self.parent is not None else None,
+        )
 
+        if self.type == "object":
             self._bootstrap(value)
-
             kwclasses = {
                 key: kwclass for key in value
                 if (key not in self.keywords and  # skip bootstrapped keywords
@@ -119,10 +118,7 @@ class JSONSchema(JSON):
                 self.data[key] = kw.json
 
             if self.parent is None:
-                self._resolve_references()
-
-        else:
-            raise TypeError(f"{value=} is not JSONSchema-compatible")
+                self.resolve_references()
 
     def _bootstrap(self, value: Mapping[str, JSONCompatible]) -> None:
         from jschon.vocabulary.core import SchemaKeyword, VocabularyKeyword
@@ -150,21 +146,6 @@ class JSONSchema(JSON):
             self.keywords["$id"] = id_kw
             self.data["$id"] = id_kw.json
 
-    def _resolve_references(self) -> None:
-        for kw in self.keywords.values():
-            if hasattr(kw, 'resolve'):
-                kw.resolve()
-            elif isinstance(kw.json, JSONSchema):
-                kw.json._resolve_references()
-            elif kw.json.type == "array":
-                for item in kw.json:
-                    if isinstance(item, JSONSchema):
-                        item._resolve_references()
-            elif kw.json.type == "object":
-                for item in kw.json.values():
-                    if isinstance(item, JSONSchema):
-                        item._resolve_references()
-
     @staticmethod
     def _resolve_dependencies(kwclasses: Dict[str, KeywordClass]) -> Iterator[KeywordClass]:
         dependencies = {
@@ -183,6 +164,21 @@ class JSONSchema(JSON):
                             pass
                     yield kwclass
                     break
+
+    def resolve_references(self) -> None:
+        for kw in self.keywords.values():
+            if hasattr(kw, 'resolve'):
+                kw.resolve()
+            elif isinstance(kw.json, JSONSchema):
+                kw.json.resolve_references()
+            elif kw.json.type == "array":
+                for item in kw.json:
+                    if isinstance(item, JSONSchema):
+                        item.resolve_references()
+            elif kw.json.type == "object":
+                for item in kw.json.values():
+                    if isinstance(item, JSONSchema):
+                        item.resolve_references()
 
     def validate(self) -> Result:
         """Validate the schema against its metaschema."""
@@ -222,7 +218,7 @@ class JSONSchema(JSON):
     @cached_property
     def parentschema(self) -> Optional[JSONSchema]:
         """The containing :class:`JSONSchema` instance.
-        
+
         Note that this is not necessarily the same as `self.parent`.
         """
         parent = self.parent
@@ -231,6 +227,16 @@ class JSONSchema(JSON):
                 return parent
             parent = parent.parent
 
+    def is_resource_root(self):
+        try:
+            return "$id" in self.keywords or self.parent is None
+        except AttributeError:
+            # During initialization, we need to know whether we are
+            # a resource root before we are able to fully process the
+            # keywords.  This flag can become out-of-date if the value
+            # is changed after initialization, so only use it as a back-up.
+            return self._initial_value_has_id or self.parent is None
+
     @cached_property
     def resource_rootschema(self) -> JSONSchema:
         """The :class:`JSONSchema` at the root of the containing resource.
@@ -238,6 +244,10 @@ class JSONSchema(JSON):
         This is the nearest ancestor (including `self`) containing ``"$id"``,
         or if none exist, it is the same as `self.document_rootschema`.
         """
+        # TODO: keep independent, redirect to resource_root, or just use
+        #       resource_root?  It is slightly nicer to have the return
+        #       type be JSONSchema, but could just narrow the return type
+        #       by overriding resource_root?
         if '$id' in self.keywords:
             return self
         ancestor = self
@@ -271,7 +281,7 @@ class JSONSchema(JSON):
     @property
     def metaschema_uri(self) -> Optional[URI]:
         """The :class:`~jschon.uri.URI` identifying the schema's metaschema.
-        
+
         If not defined on this (sub)schema, the metaschema URI
         is determined by the parent schema.
         """
@@ -285,40 +295,9 @@ class JSONSchema(JSON):
         self._metaschema_uri = value
 
     @property
-    def base_uri(self) -> Optional[URI]:
-        """The schema's base :class:`~jschon.uri.URI`.
-        
-        The base URI is obtained by searching up the schema tree
-        for a schema URI, and removing any fragment.
-        """
-        if self._uri is not None:
-            return self._uri.copy(fragment=False)
-        if self.parentschema is not None:
-            return self.parentschema.base_uri
-
-    @property
-    def uri(self) -> Optional[URI]:
-        """The :class:`~jschon.uri.URI` identifying the schema.
-
-        Used as the key for caching the schema in the catalog.
-        """
-        return self._uri
-
-    @uri.setter
-    def uri(self, value: Optional[URI]) -> None:
-        if self._uri != value:
-            if self._uri is not None:
-                self.catalog.del_schema(self._uri, cacheid=self.cacheid)
-
-            self._uri = value
-
-            if self._uri is not None:
-                self.catalog.add_schema(self._uri, self, cacheid=self.cacheid)
-
-    @property
     def canonical_uri(self) -> Optional[URI]:
         """The absolute location of the (sub)schema.
-        
+
         This is not necessarily an 'absolute URI', as it may contain
         a fragment.
         """
@@ -459,7 +438,7 @@ class Result:
 
     def pass_(self) -> None:
         """Mark the result as valid.
-        
+
         A result is initially valid, so this should only need
         to be called by a keyword when it must reverse a failure.
         """
@@ -476,7 +455,7 @@ class Result:
 
     def refschema(self, schema: JSONSchema) -> None:
         """Set the referenced schema for a by-reference keyword.
-        
+
         This ensures that :attr:`absolute_uri` returns the URI of the
         referenced schema rather than the referencing keyword.
         """
