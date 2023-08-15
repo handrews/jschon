@@ -63,7 +63,7 @@ def test_missing_catalog():
 @pytest.fixture
 def setup_tmpdir():
     """Create a temp dir hierarchy containing a JSON file.
-    
+
     Yield (tmpdir path, subdir name, file name) and clean up
     afterwards.
     """

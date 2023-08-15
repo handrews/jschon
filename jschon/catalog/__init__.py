@@ -10,6 +10,7 @@ from typing import Any, ContextManager, Dict, Hashable, Set, Union
 from jschon.exceptions import CatalogError, JSONPointerError, URIError
 from jschon.json import JSONCompatible
 from jschon.jsonpointer import JSONPointer
+from jschon.resource import JSONResource
 from jschon.jsonschema import JSONSchema
 from jschon.uri import URI
 from jschon.utils import json_loadf, json_loadr
@@ -278,6 +279,24 @@ class Catalog:
         False otherwise."""
         return format_attr in self._enabled_formats
 
+    def add_resource(
+        self,
+        uri: URI,
+        resource: JSONResource,
+        *,
+        cacheid: Hashable = 'default',
+    ) -> None:
+        """Add a (sub)resource to a cache.
+
+        Note that this method is called automatically during resource construction.
+
+        :param uri: the URI identifying the (sub)resource
+        :param schema: the :class:`~jschon.resource.JSONResource` instance to cache
+        :param cacheid: schema cache identifier
+        """
+        self._schema_cache.setdefault(cacheid, {})
+        self._schema_cache[cacheid][uri] = resource
+
     def add_schema(
             self,
             uri: URI,
@@ -293,16 +312,15 @@ class Catalog:
         :param schema: the :class:`~jschon.jsonschema.JSONSchema` instance to cache
         :param cacheid: schema cache identifier
         """
-        self._schema_cache.setdefault(cacheid, {})
-        self._schema_cache[cacheid][uri] = schema
+        self.add_resource(uri, schema, cacheid=cacheid)
 
-    def del_schema(
-            self,
-            uri: URI,
-            *,
-            cacheid: Hashable = 'default',
+    def del_resource(
+        self,
+        uri: URI,
+        *,
+        cacheid: Hashable = 'default'
     ) -> None:
-        """Remove a (sub)schema from a cache.
+        """Remove a (sub)resource from a cache.
 
         :param uri: the URI identifying the (sub)schema
         :param cacheid: schema cache identifier
@@ -310,12 +328,93 @@ class Catalog:
         if cacheid in self._schema_cache:
             self._schema_cache[cacheid].pop(uri, None)
 
+    def del_schema(
+        self,
+        uri: URI,
+        *,
+        cacheid: Hashable = 'default',
+    ) -> None:
+        """Remove a (sub)schema from a cache.
+
+        :param uri: the URI identifying the (sub)schema
+        :param cacheid: schema cache identifier
+        """
+        self.del_resource(uri, cacheid=cacheid)
+
+    def get_resource(
+        self,
+        uri: URI,
+        *,
+        metadocument_uri: URI = None,
+        cacheid: Hashable = 'default',
+        cls: Union[Type[JSONResource], Type[JSONSchema]] = JSONResource,
+    ) -> JSONResource:
+        """Get a (sub)resource identified by `uri` from a cache, or
+        load it from a :class:`Source` if not already cached.
+
+        :param uri: the URI identifying the (sub)resource
+        :param metadocument_uri: passed to the resource constrructor when
+            loading a new instance from a source; currently this is only
+            used with :class:`JSONSchema` instances where it is passed
+            as the ``metaschema_uri`` parameter
+        :param cacheid: schema cache identifier
+        :param cls: The :class:`jschon.resource.JSONResource` subclass to
+            instantiate
+        :raise CatalogError: if a schema cannot be found for `uri`, or if the
+            object referenced by `uri` does not match the type in the
+            ``cls`` parameter
+        """
+        try:
+            return self._schema_cache[cacheid][uri]
+        except KeyError:
+            pass
+
+        resource = None
+        base_uri = uri.copy(fragment=False)
+
+        if uri.fragment is not None:
+            try:
+                resource = self._schema_cache[cacheid][base_uri]
+            except KeyError:
+                pass
+
+        if resource is None:
+            doc = self.load_json(base_uri)
+            kwargs = {}
+            if issubclass(cls, JSONSchema):
+                kwargs['metaschema_uri'] = metadocument_uri
+            resource = cls(
+                doc,
+                catalog=self,
+                cacheid=cacheid,
+                uri=base_uri,
+                **kwargs,
+            )
+            try:
+                return self._schema_cache[cacheid][uri]
+            except KeyError:
+                pass
+
+        if uri.fragment:
+            try:
+                ptr = JSONPointer.parse_uri_fragment(uri.fragment)
+                resource = ptr.evaluate(resource)
+            except JSONPointerError as e:
+                raise CatalogError(f"Schema not found for {uri}") from e
+
+        if not isinstance(resource, cls):
+            raise CatalogError(
+                f"The object referenced by {uri} is not an instance of {cls.__name__}",
+            )
+
+        return resource
+
     def get_schema(
-            self,
-            uri: URI,
-            *,
-            metaschema_uri: URI = None,
-            cacheid: Hashable = 'default',
+        self,
+        uri: URI,
+        *,
+        metaschema_uri: URI = None,
+        cacheid: Hashable = 'default',
     ) -> JSONSchema:
         """Get a (sub)schema identified by `uri` from a cache, or
         load it from disk if not already cached.
@@ -327,45 +426,12 @@ class Catalog:
         :raise CatalogError: if a schema cannot be found for `uri`, or if the
             object referenced by `uri` is not a :class:`~jschon.jsonschema.JSONSchema`
         """
-        try:
-            return self._schema_cache[cacheid][uri]
-        except KeyError:
-            pass
-
-        schema = None
-        base_uri = uri.copy(fragment=False)
-
-        if uri.fragment is not None:
-            try:
-                schema = self._schema_cache[cacheid][base_uri]
-            except KeyError:
-                pass
-
-        if schema is None:
-            doc = self.load_json(base_uri)
-            schema = JSONSchema(
-                doc,
-                catalog=self,
-                cacheid=cacheid,
-                uri=base_uri,
-                metaschema_uri=metaschema_uri,
-            )
-            try:
-                return self._schema_cache[cacheid][uri]
-            except KeyError:
-                pass
-
-        if uri.fragment:
-            try:
-                ptr = JSONPointer.parse_uri_fragment(uri.fragment)
-                schema = ptr.evaluate(schema)
-            except JSONPointerError as e:
-                raise CatalogError(f"Schema not found for {uri}") from e
-
-        if not isinstance(schema, JSONSchema):
-            raise CatalogError(f"The object referenced by {uri} is not a JSON Schema")
-
-        return schema
+        return self.get_resource(
+            uri,
+            metadocument_uri=metaschema_uri,
+            cacheid=cacheid,
+            cls=JSONSchema,
+        )
 
     @contextmanager
     def cache(self, cacheid: Hashable = None) -> ContextManager[Hashable]:
