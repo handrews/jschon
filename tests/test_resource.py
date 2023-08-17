@@ -7,6 +7,7 @@ from jschon import Catalog, CatalogError, create_catalog, JSON, JSONPointer, URI
 from jschon.resource import (
     JSONResource,
     JSONSchemaRefId,
+    RefIdKeywordConfig,
     ResourceURIs,
     ResourceError,
     ResourceNotReadyError,
@@ -293,7 +294,6 @@ def test_uris(
     assert catalog.get_resource(property_uri, cls=JSONSchemaRefId) is r
     for au in additional_uris:
         assert catalog.get_resource(au) is r
-
 
 def test_non_root_json_pointer_uri():
     # This cannot be covered using JSONSchemaRefId
@@ -590,3 +590,43 @@ def test_child_resource_types():
     # Test that these functions/properties work for embedded roots
     assert crr[0].is_resource_root()
     assert crr[0].resource_root is crr[0]
+
+
+def test_refid_old_id_syntax():
+    base = URI('https://example.com')
+    foo_uri = base.copy(fragment="foo")
+    bar_uri = base.copy(fragment="bar")
+
+    r = JSONSchemaRefId(
+        {
+            "$id": str(foo_uri),
+            "items": {"$id": "#bar"},
+        },
+        ref_id_keyword_config=RefIdKeywordConfig(
+            id_fragment_support='plain-name',
+        ),
+    )
+
+    assert r.base_uri == base
+    assert r.uri == base
+    assert r.additional_uris == {foo_uri}
+    assert r['items'].base_uri == base
+    assert r['items'].uri == bar_uri
+    assert r['items'].additional_uris == frozenset()
+
+
+@pytest.mark.parametrize('id_str,frag_support,allow_iris,error', (
+    ('about:blank#', 'none', False, 'must not have a fragment'),
+    ('about:blank#foo', 'empty', False, 'must not have a non-empty fragment'),
+    ('about:blank#føø', 'plain-name', False, 'must be ascii and match'),
+    ('about:blank#/føø', 'plain-name', True, 'must match'),
+))
+def test_refid_id_frag_errors(id_str, frag_support, allow_iris, error):
+    with pytest.raises(ValueError, match=error):
+        JSONSchemaRefId(
+            {"$id": id_str},
+            ref_id_keyword_config=RefIdKeywordConfig(
+                id_fragment_support=frag_support,
+                allow_iris=allow_iris,
+            )
+        )

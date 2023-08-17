@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 __all__ = [
     'JSONResource',
     'JSONSchemaRefId',
+    'RefIdKeywordConfig',
     'ResourceURIs',
     'ResourceError',
     'ResourceNotReadyError',
@@ -741,7 +742,7 @@ class JSONSchemaRefId(JSONResource):
     )
     """US-ASCII XML NCName production US-ASCII subset (core metaschema)."""
 
-    IRI_ANCHOR_REGEXP: ClassVar = (
+    IRI_ANCHOR_REGEXP: ClassVar[re.Pattern] = re.compile(
         r'['
             r'_a-zA-Z' r'\xc0-\xd6' r'\xd8-\xf6' r'\xf8-\u02ff'
             r'\u0370-\u037d' r'\u037f-\u1fff' r'\u200c-\u200d' r'\u2070-\u218f'
@@ -821,15 +822,15 @@ class JSONSchemaRefId(JSONResource):
         elif fs == 'plain-name':
             a = urllib.parse.unquote(id_uri.fragment)
             if self._ref_id_config.allow_iris:
-                if self.IRI_ANCHOR_REGEX.fullmatch(a) is None:
+                if self.IRI_ANCHOR_REGEXP.fullmatch(a) is None:
                     raise ValueError(
                         f'"$id" <{id_uri}> plain name fragment must match '
                         f'regular expression /{self.IRI_ANCHOR_REGEXP}/',
                     )
-            elif self.URI_ANCHOR_REGEX.fullmatch(a) is None:
+            elif self.URI_ANCHOR_REGEXP.fullmatch(a) is None:
                 raise ValueError(
-                    f'"$id" <{id_uri}> plain name fragment must match '
-                    f'regular expression /{self.URI_ANCHOR_REGEXP}/',
+                    f'"$id" <{id_uri}> plain name fragment must be ascii and '
+                    f'match regular expression /{self.URI_ANCHOR_REGEXP}/',
                 )
         if (
             not id_uri.has_absolute_base()
@@ -888,31 +889,12 @@ class JSONSchemaRefId(JSONResource):
             arbitrary fragment syntax.  Note that with ``"any"``, this class
             does not attempt to prevent nonsensical JSON Pointer fragment
             conflicts, and will raise a `NotImplementedError` if it does not
-            recognize the fragment syntax.  **NOTE:** At this time, only
-            the values ``"none"`` and ``"empty"`` are implemented.
-        :param allow_iris: Allow IRIs (full unicode support) instead of just
-            URIs, as is proposed for post-draft 2020-12 JSON Schema.
-            *NOTE: Setting this to ``True`` currently results in
-            a `NotImpementedError`.
+            recognize the fragment syntax.
         """
         if self._ref_id_config is None:
             self._ref_id_config = (
                 self.resource_parent._ref_id_config if self.resource_parent
                 else RefIdKeywordConfig()
-            )
-
-        if self._ref_id_config.allow_iris:
-            # NOTE: IRI support depends on having a URI/IRI parsing
-            #       library that properly handles IRIs, which the
-            #       rfc3986 package does not do.
-            raise NotImplementedError("IRIs not yet supported.")
-        if self._ref_id_config.id_fragment_support == 'plain-name':
-            raise NotImplementedError(
-                'Plain name fragments in "$id" not yet supported.',
-            )
-        if self._ref_id_config.id_fragment_support == 'any':
-            raise NotImplementedError(
-                'Arbitrary fragments in "$id" not yet supported.',
             )
 
         if initial_base_uri is None:
@@ -936,6 +918,7 @@ class JSONSchemaRefId(JSONResource):
         if isinstance(self.data, Mapping):
             uri, new_additional = self._check_keywords(uri, base_uri)
 
+        print(f'{self}: <{uri}> <<{additional_uris | new_additional}>>')
         super().pre_recursion_init(
             catalog=catalog,
             cacheid=cacheid,
@@ -962,5 +945,8 @@ class JSONSchemaRefId(JSONResource):
 
     def is_resource_root(self):
         if isinstance(self.data, (JSON, Mapping)):
-            return "$id" in self.data or self.parent is None
+            return (
+                "$id" in self.data and not str(self.data['$id']).startswith('#')
+                or self.parent is None
+            )
         return self.parent is None
