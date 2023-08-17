@@ -3,11 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import cached_property
 from uuid import uuid4
+import re
+import urllib.parse
 
-from typing import Any, Dict, FrozenSet, Generator, Hashable, Optional, Set, TYPE_CHECKING, Type, Union
+from typing import Any, ClassVar, Dict, FrozenSet, Generator, Hashable, Mapping, Optional, Set, TYPE_CHECKING, Type, Union
 
 from jschon.exc import JschonError
 from jschon.json import JSON
+from jschon.jsonpointer import RelativeJSONPointer
 from jschon.uri import URI
 
 if TYPE_CHECKING:
@@ -15,6 +18,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     'JSONResource',
+    'JSONSchemaRefId',
     'ResourceURIs',
     'ResourceError',
     'ResourceNotReadyError',
@@ -682,3 +686,281 @@ class JSONResource(JSON):
         succeeds.  This is the default behavior.
         """
         self.references_resolved = True
+
+
+@dataclass
+class RefIdKeywordConfig:
+    """Convenience structure for configuring :class:`JSONSchemaRefId`"""
+
+    reference_keywords: Set[str] = frozenset({"$ref", "$dynamicRef"})
+    """Keywords that take a URI-reference pointing to another resource."""
+
+    anchor_keywords: Set[str] = frozenset({"$anchor", "$dynamicAnchor"})
+    """Keywords that define a plain-name fragment."""
+
+    id_fragment_support: Literal['none', 'empty', 'plain-name', 'any'] = 'empty'
+    """What fragmnent syntax/semantics, if any, are supported in "$id"."""
+
+    allow_iris: bool = False
+    """If true, allow IRIs (URIs with full unicode support per RFC 3987)."""
+
+
+class JSONSchemaRefId(JSONResource):
+    """Minimal static implementation of JSON Schema reference and id keywords.
+
+    This is an experimental class loosely inspired by the JRI (JSON Referencing
+    and identification) proposal at:
+    https://github.com/json-schema-org/referencing (rendered a
+     https://handrews.github.io/renderings/draft-handrews-jri.html).
+    However, it implements only the keywords and behaviors present in
+    JSON Schema, and provides options to support syntax back to draft-06.
+
+    This class also supports the *static* aspects of dynamic keywords such as
+    ``"$dynamicAnchor`` and ``"$dynamicRef"``, meaning aspects that do not
+    require the concept of evaluating an instance.  The behavior of
+    ``"$synamicAnchor"`` is already static, and the first step of resolving
+    ``"$dynanicRef"`` is identical to that of ``"$ref"``.  Subclasses may
+    build on this to offer dynamic support for these and potentially other
+    keywords.
+
+    Reference resolution is performed as far as connecting reference
+    keywords and targets (initial targets in the case of ``"$dynamicRef"``).
+    See :attr:``resolved_references`` for details.
+
+    This class is intended to serve as a base class for working with formats
+    such as OpenAPI and AsyncAPI that use a mix of JSON Schema / JSON Reference
+    and other referencing / linking strategies, often in purely static contexts.
+    It is distinct from the approach used by
+    :class:`~jschon.jsonschema.JSONSchema`, which (correctly) integrates the
+    handling of these keywords with its evaluation model.
+    """
+    FRAGMENT_SAFE_CHARACTERS="!$&'()*+,;=@:/?"
+
+    URI_ANCHOR_REGEXP: ClassVar[re.Pattern] = re.compile(
+        r'^[A-Za-z_][-A-Za-z0-9._]*$',
+    )
+    """US-ASCII XML NCName production US-ASCII subset (core metaschema)."""
+
+    IRI_ANCHOR_REGEXP: ClassVar = (
+        r'['
+            r'_a-zA-Z' r'\xc0-\xd6' r'\xd8-\xf6' r'\xf8-\u02ff'
+            r'\u0370-\u037d' r'\u037f-\u1fff' r'\u200c-\u200d' r'\u2070-\u218f'
+            r'\u2c00-\u2fef' r'\u3001-\ud7ff' r'\uf900-\ufdcf' r'\ufdf0-\ufffd'
+            r'\U00010000-\U000effff'
+        r']'
+        r'['
+            r'_a-zA-Z' r'\xc0-\xd6' r'\xd8-\xf6' r'\xf8-\u02ff'
+            r'\u0370-\u037d' r'\u037f-\u1fff' r'\u200c-\u200d' r'\u2070-\u218f'
+            r'\u2c00-\u2fef' r'\u3001-\ud7ff' r'\uf900-\ufdcf' r'\ufdf0-\ufffd'
+            r'\U00010000-\U000effff'
+            r'\-.0-9\xb7' r'\u0300-\u036f' r'\u203f-\u2040'
+        r']*'
+    )
+    """XML NCName production, genrated by abnf-to-regexp Python package."""
+
+    def __init__(
+        self,
+        *args,
+        ref_id_keyword_config: Optional[RefIdKeywordConfig] = None,
+        **kwargs,
+    ):
+        self._ref_id_config = ref_id_keyword_config
+
+        self.keyword_identifiers: Dict[str, URI] = {}
+        """Identifier URIs organized by keyword."""
+
+        self.keyword_references: Dict[str, URI] = {}
+        """Reference target URIs organized by keyword."""
+
+        super().__init__(*args, **kwargs)
+
+    def _check_keywords(self, uri: Optional[URI], base_uri: URI):
+        new_additional = set()
+        if '$id' in self.data:
+            id_uri = self._check_id(uri, base_uri)
+            base_uri = id_uri.copy(fragment=None)
+            self.keyword_identifiers['$id'] = id_uri
+            if uri is not None:
+                new_additional.add(uri)
+            uri= id_uri
+
+        for ak in self._ref_id_config.anchor_keywords:
+            if ak in self.data:
+                a_uri = base_uri.copy(
+                    fragment=urllib.parse.quote(
+                        self.data[ak],
+                        safe=self.FRAGMENT_SAFE_CHARACTERS,
+                    ),
+                )
+                self.keyword_identifiers[ak] = a_uri
+                if uri is None:
+                    uri = a_uri
+                else:
+                    new_additional.add(a_uri)
+
+        for rk in self._ref_id_config.reference_keywords:
+            if rk in self.data:
+                r_uri = URI(self.data[rk]).resolve(base_uri)
+                self.keyword_references[rk] = r_uri
+
+        return uri, new_additional
+
+    def _check_id(
+        self,
+        uri: Optional[URI],
+        base_uri: URI,
+    ) -> Tuple[URI, Set[URI]]:
+        id_uri = URI(self.data['$id'])
+        fs = self._ref_id_config.id_fragment_support
+        if fs == 'none' and id_uri.fragment is not None:
+            raise ValueError(f'"$id" <{id_uri}> must not have a fragment!')
+        elif fs == 'empty' and id_uri.fragment not in (None, ''):
+            raise ValueError(
+                f'"$id" <{id_uri}> must not have a non-empty fragment!',
+            )
+        elif fs == 'plain-name':
+            a = urllib.parse.unquote(id_uri.fragment)
+            if self._ref_id_config.allow_iris:
+                if self.IRI_ANCHOR_REGEX.fullmatch(a) is None:
+                    raise ValueError(
+                        f'"$id" <{id_uri}> plain name fragment must match '
+                        f'regular expression /{self.IRI_ANCHOR_REGEXP}/',
+                    )
+            elif self.URI_ANCHOR_REGEX.fullmatch(a) is None:
+                raise ValueError(
+                    f'"$id" <{id_uri}> plain name fragment must match '
+                    f'regular expression /{self.URI_ANCHOR_REGEXP}/',
+                )
+        if (
+            not id_uri.has_absolute_base()
+        ):
+            id_uri = id_uri.resolve(base_uri)
+
+        return id_uri
+
+    def pre_recursion_init(
+        self,
+        *,
+        catalog: Union[Catalog, str] = 'catalog',
+        cacheid: Hashable = 'default',
+        uri: Optional[URI] = None,
+        additional_uris: Set[URI] = frozenset(),
+        initial_base_uri: Optional[URI] = None,
+        default_uri_factory: Callable[[], URI] = DEFAULT_URI_FACTORY,
+        **kwargs: Any,
+    ):
+        """Processes keywords to determine URIs prior to superclass invocation.
+
+        All parameters not documented here behave identically to those for
+        :meth:`jschon.resource.JSONResource.pre_recursion_init`.
+
+        All paremeters controlling which keywords are supported and with
+        what syntax default to the behavior of JSON Schema draft 2020-12.
+        This class assumes that any keyword may appear in any object;
+        subclasses may implement further restrictions.
+
+        The base URI is determined in accordance with the JSON Schema
+        specification and RFC 3986 §5.1 (subsections given for each point):
+
+            1. From ``"$id"`` (§5.1.1)
+            2. From a parent ``"$id"` (§5.1.2)
+            3. From the the ``initial_base_uri`` parameter (§5.1.2 – 5.1.4)
+            4. From the ``uri`` parameter as the request URI (§5.1.3)
+            5. The ``default_uri_factory`` parameter (§5.1.4)
+
+        The ``initial_base_uri`` parameter is assumed to represent the caller's
+        interpretation of RFC 3986 §5.1.2 – 5.1.4, including base URI
+        determination specific to the calling application, and therefore takes
+        precedence over the assumptions involved in using the `uri` or
+        `default_uri_factory` parameters.
+
+        :param reference_keywords: The keywords to resolve as references,
+            following the same rules as JSON Schema's ``"$ref"``.
+        :param anchor_keywords: The keywords that define plain-name fragments
+            as strings, relative to the current base URI.
+        :param id_fragment_support: Whether the ``"$id"`` keyword allows
+            fragments, and in what way.  The options are ``"none"`` (the
+            proposed post-draft 2020-12 behavior, and the recommended usage
+            in 2019-09 and 2020-12), ``"empty"`` (allowing empty JSON Pointer
+            fragments as in 2019-09 and 2020-12), ``"plain-name"`` allowing
+            the plain-name-fragment-defining behavior from draft-06 and -07
+            that was later split out into ``"$anchor"``, or ``"any"``, allowing
+            arbitrary fragment syntax.  Note that with ``"any"``, this class
+            does not attempt to prevent nonsensical JSON Pointer fragment
+            conflicts, and will raise a `NotImplementedError` if it does not
+            recognize the fragment syntax.  **NOTE:** At this time, only
+            the values ``"none"`` and ``"empty"`` are implemented.
+        :param allow_iris: Allow IRIs (full unicode support) instead of just
+            URIs, as is proposed for post-draft 2020-12 JSON Schema.
+            *NOTE: Setting this to ``True`` currently results in
+            a `NotImpementedError`.
+        """
+        if self._ref_id_config is None:
+            self._ref_id_config = (
+                self.resource_parent._ref_id_config if self.resource_parent
+                else RefIdKeywordConfig()
+            )
+
+        if self._ref_id_config.allow_iris:
+            # NOTE: IRI support depends on having a URI/IRI parsing
+            #       library that properly handles IRIs, which the
+            #       rfc3986 package does not do.
+            raise NotImplementedError("IRIs not yet supported.")
+        if self._ref_id_config.id_fragment_support == 'plain-name':
+            raise NotImplementedError(
+                'Plain name fragments in "$id" not yet supported.',
+            )
+        if self._ref_id_config.id_fragment_support == 'any':
+            raise NotImplementedError(
+                'Arbitrary fragments in "$id" not yet supported.',
+            )
+
+        if initial_base_uri is None:
+            if uri is not None and uri.has_absolute_base:
+                initial_base_uri = uri
+            else:
+                initial_base_uri = default_uri_factory()
+
+        elif not initial_base_uri.is_absolute():
+            raise ValueError(
+                "Initial base URI must be an absolute-URI as defined "
+                "by RFC 3986 §4.3",
+            )
+
+        base_uri = (
+            self.resource_parent.base_uri if self.document_root != self
+            else initial_base_uri
+        )
+
+        new_additional = set()
+        if isinstance(self.data, Mapping):
+            uri, new_additional = self._check_keywords(uri, base_uri)
+
+        super().pre_recursion_init(
+            catalog=catalog,
+            cacheid=cacheid,
+            uri=uri,
+            additional_uris=additional_uris | new_additional,
+            initial_base_uri=base_uri,
+            default_uri_factory=default_uri_factory,
+            **kwargs,
+        )
+
+    def __setitem__(self, index, obj):
+        super().__setitem__(index, obj)
+        if index == '$id':
+            id_uri = URI(obj)
+            if id_uri.scheme is None:
+                if (p := self.resource_parent) is not None:
+                    id_uri = id_uri.resolve(p.base_uri)
+                else:
+                    # our past base URI was the base for the whole
+                    # resource, and close enough for testing purposes
+                    # even if potentially not technically correct.
+                    id_uri = id_uri.resolve(self.base_uri)
+            self.uri = URI(obj)
+
+    def is_resource_root(self):
+        if isinstance(self.data, (JSON, Mapping)):
+            return "$id" in self.data or self.parent is None
+        return self.parent is None

@@ -1,6 +1,4 @@
 from functools import cached_property
-import urllib.parse
-from typing import Mapping
 from uuid import uuid4
 
 import pytest
@@ -8,6 +6,7 @@ import pytest
 from jschon import Catalog, CatalogError, create_catalog, JSON, JSONPointer, URI
 from jschon.resource import (
     JSONResource,
+    JSONSchemaRefId,
     ResourceURIs,
     ResourceError,
     ResourceNotReadyError,
@@ -39,131 +38,7 @@ class PreCalculatePointerUri(JSONResource):
         super().pre_recursion_init(*args, **kwargs)
 
 
-class FakeSchema(JSONResource):
-    # For testing purposes, this simulates handling "$id", "$anchor",
-    # and "$dynamicAnchor" through the constructor.  The JSONSchema
-    # class handles these keywords in a very different way, which is
-    # also expected to work and is tested by test_schema.py and the
-    # JSON Schema Test Suite.
-    def __init__(
-        self,
-        value,
-        *args,
-        parent=None,
-        catalog='catalog',
-        cacheid='default',
-        uri=None,
-        additional_uris=frozenset(),
-        **kwargs,
-    ):
-
-        if kwargs.get('itemclass') is None:
-            kwargs['itemclass'] = FakeSchema
-        super().__init__(
-            value,
-            *args,
-            parent=parent,
-            catalog=catalog,
-            cacheid=cacheid,
-            uri=uri,
-            additional_uris=additional_uris,
-            **kwargs,
-        )
-
-    def pre_recursion_init(
-        self,
-        *,
-        catalog='catalog',
-        cacheid='default',
-        uri=None,
-        additional_uris=frozenset(),
-        **kwargs,
-    ):
-        if uri is None:
-            base_uri = None
-            candidate = self.parent
-            while candidate is not None:
-                if isinstance(candidate, JSONResource):
-                    base_uri = candidate.base_uri
-                candidate = candidate.parent
-        else:
-            assert uri.scheme
-            base_uri = uri.copy(fragment=None)
-
-
-        additional_uris = set()
-        if isinstance(self.data, Mapping) and "$id" in self.data:
-            id_uri_ref = URI(self.data["$id"])
-            assert id_uri_ref.fragment in (None, '')
-            if id_uri_ref.scheme is None:
-                if base_uri is None:
-                    raise ValueError('FakeSchema: Cannot resolve relative $id')
-
-                id_uri = id_uri_ref.resolve(base_uri)
-            else:
-                id_uri = id_uri_ref
-
-            if id_uri != uri:
-                if uri is not None:
-                    additional_uris.add(uri)
-            uri = id_uri
-            base_uri = uri.copy(fragment=None)
-
-        anchor_uris = []
-        if isinstance(self.data, Mapping):
-            for frag_kwd in ("$anchor", "$dynamicAnchor"):
-                if frag_kwd in self.data:
-                    anchor_uris.append(
-                        base_uri.copy(
-                            fragment=urllib.parse.quote(
-                                self.data[frag_kwd],
-                                safe="!$&'()*+,;=@:/?",
-                            )
-                        )
-                    )
-        if uri is None and anchor_uris:
-            # We don't have an absolute-URI, take the first anchor URI instead.
-            uri = anchor_uris[0]
-            anchor_uris = anchor_uris[1:]
-
-        elif uri is not None and len(anchor_uris) == 1:
-            # Reverse from the expected arrangement to test that
-            # the outcome remains the same.
-            tmp = uri
-            uri = anchor_uris[0]
-            anchor_uris[0] = tmp
-
-        additional_uris = set(anchor_uris)
-
-        super().pre_recursion_init(
-            catalog=catalog,
-            cacheid=cacheid,
-            uri=uri,
-            additional_uris=additional_uris,
-            **kwargs,
-        )
-
-    def __setitem__(self, index, obj):
-        super().__setitem__(index, obj)
-        if index == '$id':
-            id_uri = URI(obj)
-            if id_uri.scheme is None:
-                if (p := self.resource_parent) is not None:
-                    id_uri = id_uri.resolve(p.base_uri)
-                else:
-                    # our past base URI was the base for the whole
-                    # resource, and close enough for testing purposes
-                    # even if potentially not technically correct.
-                    id_uri = id_uri.resolve(self.base_uri)
-            self.uri = URI(obj)
-
-    def is_resource_root(self):
-        if isinstance(self.data, (JSON, Mapping)):
-            return "$id" in self.data or self.parent is None
-        return self.parent is None
-
-
-class AlternatingResource(FakeSchema):
+class AlternatingResource(JSONSchemaRefId):
     def __init__(self, *args, **kwargs):
         kwargs['itemclass'] = NonResourceSpacer
         super().__init__(*args, **kwargs)
@@ -176,8 +51,8 @@ class NonResourceSpacer(JSON):
 
 
 # JSONResource to test the actual defaults of the base class,
-# FakeSchema because its is_resource_root() accesses parent information.
-@pytest.mark.parametrize('cls', (JSONResource, FakeSchema))
+# JSONSchemaRefId because its is_resource_root() accesses parent information.
+@pytest.mark.parametrize('cls', (JSONResource, JSONSchemaRefId))
 def test_constructor_defaults(cls):
     input_value = {'foo': ['bar']}
     jr = cls(input_value)
@@ -289,7 +164,7 @@ def test_invalidate_caches():
     #   * a root node with a non-JSON Pointer uri attribute
     #   * a non-root node with a JSON Pointer uri attribute
     #   * a non-document-root resource root with a non-JSON Pointer uri attr
-    r = FakeSchema([42, {"$id": "https://whatever.com"}])
+    r = JSONSchemaRefId([42, {"$id": "https://whatever.com"}])
 
     # Use id() because JSON.__eq__() tests for JSON value equality
     # and we want to verify node identity.
@@ -407,7 +282,7 @@ def test_uris(
     additional_uris,
     catalog,
 ):
-    full = FakeSchema(document)
+    full = JSONSchemaRefId(document)
     r = pointer.evaluate(full)
 
     assert r.uri == property_uri
@@ -415,13 +290,13 @@ def test_uris(
     assert r.base_uri == base_uri
 
     assert register_uri == (property_uri in catalog._schema_cache['default'])
-    assert catalog.get_resource(property_uri, cls=FakeSchema) is r
+    assert catalog.get_resource(property_uri, cls=JSONSchemaRefId) is r
     for au in additional_uris:
         assert catalog.get_resource(au) is r
 
 
 def test_non_root_json_pointer_uri():
-    # This cannot be covered using FakeSchema
+    # This cannot be covered using JSONSchemaRefId
     base = URI('tag:example.com,2023:base')
     r = PreCalculatePointerUri({'foo': 'bar'}, uri=base)
     assert r.uri == base
@@ -536,7 +411,7 @@ def test_change_additional_uris(catalog):
     dynamic_anchor_uri = base_uri.copy(fragment=dynamic_anchor_str)
     other_uri = URI("tag:example.com,2023:something-different")
 
-    r = FakeSchema({
+    r = JSONSchemaRefId({
         "$id": base_uri_str,
         "$anchor": anchor_str,
         "$dynamicAnchor": dynamic_anchor_str,
@@ -556,7 +431,7 @@ def test_change_additional_uris(catalog):
 
 def test_invalidate_path():
     base_uri = URI('https://example.com')
-    r = FakeSchema({"$id": str(base_uri), "data": ['a', 'b', 'c']})
+    r = JSONSchemaRefId({"$id": str(base_uri), "data": ['a', 'b', 'c']})
 
     c = r['data'][2]
     assert c.pointer_uri == base_uri.copy(fragment='/data/2')
