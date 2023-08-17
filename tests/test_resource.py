@@ -592,9 +592,16 @@ def test_child_resource_types():
     assert crr[0].resource_root is crr[0]
 
 
-def test_refid_old_id_syntax():
+@pytest.mark.parametrize('foo,allow_iris', (
+    ('foo', False),
+    ('foo', True),
+    pytest.param('føø', True, marks=pytest.mark.xfail(
+        reason='The rfc3986 package is not sufficiently unicode/IRI-aware',
+    )),
+))
+def test_refid_id_plain_name_syntax(foo, allow_iris):
     base = URI('https://example.com')
-    foo_uri = base.copy(fragment="foo")
+    foo_uri = base.copy(fragment=foo)
     bar_uri = base.copy(fragment="bar")
 
     r = JSONSchemaRefId(
@@ -604,14 +611,41 @@ def test_refid_old_id_syntax():
         },
         ref_id_keyword_config=RefIdKeywordConfig(
             id_fragment_support='plain-name',
+            allow_iris=allow_iris,
         ),
     )
 
     assert r.base_uri == base
     assert r.uri == base
+    assert r.pointer_uri == base.copy(fragment='')
     assert r.additional_uris == {foo_uri}
     assert r['items'].base_uri == base
     assert r['items'].uri == bar_uri
+    assert r['items'].pointer_uri == base.copy(fragment='/items')
+    assert r['items'].additional_uris == frozenset()
+
+
+def test_refid_json_pointer_syntax():
+    base = URI('https://example.com')
+    items_uri = base.copy(fragment="/items")
+
+    r = JSONSchemaRefId(
+        {
+            "$id": str(base),
+            "items": {"$id": "#/items"},
+        },
+        ref_id_keyword_config=RefIdKeywordConfig(
+            id_fragment_support='any',
+        ),
+    )
+
+    assert r.base_uri == base
+    assert r.uri == base
+    assert r.pointer_uri == base.copy(fragment='')
+    assert r.additional_uris == frozenset()
+    assert r['items'].base_uri == base
+    assert r['items'].uri == items_uri
+    assert r['items'].pointer_uri == items_uri
     assert r['items'].additional_uris == frozenset()
 
 
@@ -630,3 +664,57 @@ def test_refid_id_frag_errors(id_str, frag_support, allow_iris, error):
                 allow_iris=allow_iris,
             )
         )
+
+
+def test_refid_set_id():
+    r = JSONSchemaRefId({
+        "$id": "https://ex.org/foo",
+        "items": {
+            "$anchor": "baz",
+        }
+    })
+    assert r.keyword_identifiers['$id'] == URI('https://ex.org/foo')
+
+    bar_uri = URI("https://ex.org/bar")
+    r["$id"] = str(bar_uri)
+
+    assert r.uri == bar_uri
+    assert r.base_uri == bar_uri
+    assert r.pointer_uri == bar_uri.copy(fragment='')
+    assert r.additional_uris == frozenset()
+    
+    items = r['items']
+    assert items.uri == bar_uri.copy(fragment='baz')
+    assert items.base_uri == bar_uri
+    assert items.pointer_uri == bar_uri.copy(fragment='/items')
+    assert items.additional_uris == frozenset()
+
+
+@pytest.mark.parametrize('kw', ('$anchor', '$dynamicAnchor'))
+def test_refid_set_anchor():
+    base = URI('https://ex.org')
+    foo_uri = base.copy(fragment='foo')
+    bar_uri = base.copy(fragment='bar')
+    baz_uri = base.copy(fragment='baz')
+    qux_uri = base.copy(fragment='qux')
+
+    r = JSONSchemaRefId({
+        "$id": str(base),
+        kw: "foo",
+        "items": {
+            kw: "bar",
+        },
+    })
+    r[kw] = "baz"
+    r['items'][kw] = "qux"
+
+    assert r.uri == base
+    assert r.base_uri == base
+    assert r.pointer_uri == base.copy(fragment='')
+    assert r.additional_uris == {baz_uri}
+
+    items = r['items']
+    assert items.base_uri == base
+    assert items.uri == qux_uri
+    assert items.pointer_uri == base.copy(fragment='/items')
+    assert r.additional_uris == frozenset()

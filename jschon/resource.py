@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from functools import cached_property
 from uuid import uuid4
 import re
-import urllib.parse
 
 from typing import Any, ClassVar, Dict, FrozenSet, Generator, Hashable, Mapping, Optional, Set, TYPE_CHECKING, Type, Union
 
@@ -703,7 +702,12 @@ class RefIdKeywordConfig:
     """What fragmnent syntax/semantics, if any, are supported in "$id"."""
 
     allow_iris: bool = False
-    """If true, allow IRIs (URIs with full unicode support per RFC 3987)."""
+    """If true, allow IRIs (URIs with full unicode support per RFC 3987).
+
+    Note that :class:`jschon.uri.URI` currently depends on the `rfc3986`
+    package, which automatically encodes IRIs down to URIs, so this option
+    is currently of limited use.
+    """
 
 
 class JSONSchemaRefId(JSONResource):
@@ -787,12 +791,7 @@ class JSONSchemaRefId(JSONResource):
 
         for ak in self._ref_id_config.anchor_keywords:
             if ak in self.data:
-                a_uri = base_uri.copy(
-                    fragment=urllib.parse.quote(
-                        self.data[ak],
-                        safe=self.FRAGMENT_SAFE_CHARACTERS,
-                    ),
-                )
+                a_uri = base_uri.copy(fragment=self.data[ak])
                 self.keyword_identifiers[ak] = a_uri
                 if uri is None:
                     uri = a_uri
@@ -820,7 +819,6 @@ class JSONSchemaRefId(JSONResource):
                 f'"$id" <{id_uri}> must not have a non-empty fragment!',
             )
         elif fs == 'plain-name':
-            a = urllib.parse.unquote(id_uri.fragment)
             if self._ref_id_config.allow_iris:
                 if self.IRI_ANCHOR_REGEXP.fullmatch(a) is None:
                     raise ValueError(
@@ -918,7 +916,6 @@ class JSONSchemaRefId(JSONResource):
         if isinstance(self.data, Mapping):
             uri, new_additional = self._check_keywords(uri, base_uri)
 
-        print(f'{self}: <{uri}> <<{additional_uris | new_additional}>>')
         super().pre_recursion_init(
             catalog=catalog,
             cacheid=cacheid,
@@ -941,7 +938,17 @@ class JSONSchemaRefId(JSONResource):
                     # resource, and close enough for testing purposes
                     # even if potentially not technically correct.
                     id_uri = id_uri.resolve(self.base_uri)
-            self.uri = URI(obj)
+            self.uri = id_uri
+            self.keyword_identifiers['$id'] = id_uri
+
+        elif index in self._ref_id_config.anchor_keywords:
+            anchor_uri = self.base_uri.copy(fragment=anchor)
+            self.keyword_identif
+            if (old_anchor := self.data.get(index, None)) is not None:
+                old_anchor_uri = self.base_uri.copy(fragment=anchor)
+                if old_anchor == self.uri:
+                    self.uri = anchor_uri
+
 
     def is_resource_root(self):
         if isinstance(self.data, (JSON, Mapping)):
