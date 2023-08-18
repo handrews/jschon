@@ -194,7 +194,7 @@ class JSONSchema(JSONResource):
             self.data[key] = kw.json
         return self.data
 
-    def evaluate(self, instance: JSON, result: Result = None) -> Result:
+    def evaluate(self, instance: JSON, result: Optional[Result] = None) -> Result:
         """Evaluate a JSON document and return the evaluation result.
 
         :param instance: the JSON document to evaluate
@@ -467,7 +467,7 @@ class Result:
         """Annotate the result."""
         self.annotation = value
 
-    def fail(self, error: JSONCompatible = None) -> None:
+    def fail(self, error: Optional[JSONCompatible] = None) -> None:
         """Mark the result as invalid, optionally with an error."""
         self._valid = False
         self.error = error
