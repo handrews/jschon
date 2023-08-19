@@ -443,7 +443,7 @@ def test_mixed_metaschemas(catalog):
     } in basic['annotations']
 
 
-@pytest.mark.parametrize('data,pointer, result', (
+@pytest.mark.parametrize('data,pointer, is_root', (
     ({'$id': 'foo'}, JSONPointer(), True),
     ({}, JSONPointer(), True),
     (True, JSONPointer(), True),
@@ -451,9 +451,22 @@ def test_mixed_metaschemas(catalog):
     ({'items': {}}, JSONPointer('/items'), False),
     ({'items': True}, JSONPointer('/items'), False),
 ))
-def test_is_resource_root(data, pointer, result):
+def test_is_resource_root(data, pointer, is_root):
     s = JSONSchema(
         data,
         metaschema_uri=URI('https://json-schema.org/draft/2020-12/schema'),
     )
-    assert pointer.evaluate(s).is_resource_root() is result
+    node = pointer.evaluate(s)
+    assert node.is_resource_root() is is_root
+    assert node.resource_root is (node if is_root else s)
+    assert node.resource_parent is node.parentschema
+    assert node.parent_in_resource is None if is_root else node.resource_parent
+
+    if node.parent:
+        assert node in list(node.resource_parent.child_resource_nodes)
+        assert (
+            node in list(node.resource_parent.children_in_resource)
+        ) is not is_root
+        assert (
+            node in list(node.resource_parent.child_resource_roots)
+        ) is is_root
