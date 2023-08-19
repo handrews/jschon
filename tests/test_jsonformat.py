@@ -157,10 +157,10 @@ class ZeroIsRoot(JSONFormat):
         self._invalidated = True
 
 
-@pytest.mark.parametrize('path', (JSONPointer('/a/1'), JSONPointer('/a/1/c')))
-def test_invalidate_path(path):
-
+def test_invalidate_path():
     f = JSONFormat({}, metadocument_cls=Evaluator)
+
+    # First ensure the attributes are created.
     assert f.format_parent is None
     assert f.parent_in_format is None
     assert f.format_root is f
@@ -171,5 +171,27 @@ def test_invalidate_path(path):
     assert f._invalidate_path() is None
 
     for attr in ('format_parent', 'parent_in_format', 'format_root'):
+        with pytest.raises(AttributeError):
+            delattr(f, attr)
+
+
+def test_invalidate_value(metadocument):
+    f = JSONFormat(
+        {},
+        metadocument_uri=metadocument.uri,
+        metadocument_cls=Evaluator,
+    )
+
+    # First ensure the attributes are created.
+    assert f.parent_in_format is None
+    assert f.format_root is f
+    assert f.metadocument is metadocument
+
+    f._invalidate_value()
+
+    # Ensure 2nd call does not cause an AttributeError (for branch coverage)
+    assert f._invalidate_value() is None
+
+    for attr in ('metadocument', 'parent_in_format', 'format_root'):
         with pytest.raises(AttributeError):
             delattr(f, attr)
