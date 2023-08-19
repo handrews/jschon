@@ -11,6 +11,7 @@ from jschon.exceptions import CatalogError, JSONPointerError, URIError
 from jschon.json import JSONCompatible
 from jschon.jsonpointer import JSONPointer
 from jschon.resource import JSONResource
+from jschon.jsonformat import JSONFormat, EvaluableJSON
 from jschon.jsonschema import JSONSchema
 from jschon.uri import URI
 from jschon.utils import json_loadf, json_loadr
@@ -189,6 +190,28 @@ class Catalog:
         except KeyError:
             raise CatalogError(f"Unrecognized vocabulary URI '{uri}'")
 
+    def create_metadocument(
+        self,
+        uri: URI,
+        *meta_args,
+        meta_cls: Type[EvaluableJSON] = Metaschema,
+        **meta_kwargs: Any,
+    ) -> EvaluableJSON:
+        metadocument_doc = self.load_json(uri)
+        metadocument = meta_cls(
+            self,
+            metadocument_doc,
+            *meta_args,
+            **meta_kwargs,
+            uri=uri,
+        )
+        if not metadocument.validate().valid:
+            raise CatalogError(
+                "The metadocument is invalid against its own metadocument "
+                f'"{metadocument_doc["$document"]}"'
+            )
+        return metadocument
+
     def create_metaschema(
             self,
             uri: URI,
@@ -214,6 +237,7 @@ class Catalog:
         :raise CatalogError: if the metaschema is not valid
         """
         metaschema_doc = self.load_json(uri)
+
         default_core_vocabulary = (
             self.get_vocabulary(default_core_vocabulary_uri)
             if default_core_vocabulary_uri
@@ -237,6 +261,24 @@ class Catalog:
                 f'"{metaschema_doc["$schema"]}"'
             )
         return metaschema
+
+    def get_metadocument(
+        self,
+        uri: URI,
+        meta_cls: Type[EvaluableJSON] = EvaluableJSON,
+    ) -> EvaluableJSON:
+        try:
+            metadocument = self._schema_cache['__meta__'][uri]
+        except KeyError:
+            metadocument = None
+
+        if metadocument is None:
+            metadocument = self.create_metadocument(uri, meta_cls=meta_cls)
+
+        if not isinstance(metadocument, EvaluableJSON):
+            raise CatalogError(f"The schema referenced by {uri} is not an evaluable metadocument")
+
+        return metadocument
 
     def get_metaschema(self, uri: URI) -> Metaschema:
         """Get a metaschema identified by `uri` from the ``'__meta__'`` cache, or
@@ -264,6 +306,7 @@ class Catalog:
             raise CatalogError(f"The schema referenced by {uri} is not a metaschema")
 
         return metaschema
+
 
     def enable_formats(self, *format_attr: str) -> None:
         """Enable validation of the specified format attributes.
