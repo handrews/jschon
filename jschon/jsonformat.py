@@ -222,7 +222,16 @@ class JSONFormat(JSONResource):
             self.metadocument.initial_validation_result(self)
         )
 
-    def invalidate_format_tree():
-        del self.parent_in_format
-        del self.format_root
-        del self.is_format_root
+    def _invalidate_path(self) -> None:
+        """Causes path-dependent cached attributes to be re-calculated."""
+        for attr in (
+            'format_parent',
+            'parent_in_format',
+            'format_root',
+        ):
+            try:
+                delattr(self, attr)
+            except AttributeError:
+                pass
+
+        super()._invalidate_path()

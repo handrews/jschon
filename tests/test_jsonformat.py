@@ -1,6 +1,6 @@
 import pytest
 
-from jschon import URI
+from jschon import URI, JSONPointer
 from jschon.jsonformat import (
     EvaluableJSONResult,
     JSONFormat,
@@ -140,3 +140,36 @@ def test_validate(metadocument):
     assert r.instance == f
     assert r.evaluator == metadocument
     assert r.validating_with == metadocument 
+
+
+class ZeroIsRoot(JSONFormat):
+    _default_metadocument_cls = Evaluator
+    _invalidated = False
+
+    def is_format_root(self):
+        # Deleting an array element triggers an _invalidate_path() call
+        return self.format_parent is None or (
+            self.parent.type == 'array' and self.key == '0'
+        )
+
+    def _invalidate_path(self):
+        super()._invalidate_path()
+        self._invalidated = True
+
+
+@pytest.mark.parametrize('path', (JSONPointer('/a/1'), JSONPointer('/a/1/c')))
+def test_invalidate_path(path):
+
+    f = JSONFormat({}, metadocument_cls=Evaluator)
+    assert f.format_parent is None
+    assert f.parent_in_format is None
+    assert f.format_root is f
+
+    f._invalidate_path()
+
+    # Ensure 2nd call does not cause an AttributeError (for branch coverage)
+    assert f._invalidate_path() is None
+
+    for attr in ('format_parent', 'parent_in_format', 'format_root'):
+        with pytest.raises(AttributeError):
+            delattr(f, attr)
