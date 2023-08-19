@@ -208,7 +208,7 @@ class Catalog:
         if not metadocument.validate().valid:
             raise CatalogError(
                 "The metadocument is invalid against its own metadocument "
-                f'"{metadocument_doc["$document"]}"'
+                f'"{metadocument_doc["$schema"]}"'
             )
         return metadocument
 
@@ -247,20 +247,20 @@ class Catalog:
             self.get_vocabulary(vocab_uri)
             for vocab_uri in default_vocabulary_uris
         ]
-        metaschema = Metaschema(
-            self,
-            metaschema_doc,
-            default_core_vocabulary,
-            *default_vocabularies,
-            **kwargs,
-            uri=uri,
-        )
-        if not metaschema.validate().valid:
+
+        try:
+            return self.create_metadocument(
+                uri,
+                default_core_vocabulary,
+                *default_vocabularies,
+                **kwargs,
+                meta_cls=Metaschema,
+            )
+        except CatalogError as e:
             raise CatalogError(
                 "The metaschema is invalid against its own metaschema "
                 f'"{metaschema_doc["$schema"]}"'
-            )
-        return metaschema
+            ) from e
 
     def get_metadocument(
         self,
