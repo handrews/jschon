@@ -100,7 +100,9 @@ class JSONSchema(JSONFormat):
             catalog=catalog,
             cacheid=cacheid,
             uri=uri,
-            initial_base_uri=parent.base_uri if self.is_resource_root() and self.parent is not None else None,
+            initial_base_uri=parent.base_uri if (
+                self.is_resource_root() and self.parent is not None
+            ) else None,
         )
 
         if self.type == "object":
