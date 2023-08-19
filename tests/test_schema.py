@@ -441,3 +441,19 @@ def test_mixed_metaschemas(catalog):
         'keywordLocation': '/additionalProperties/properties/additionalProperties/title',
         'annotation': 'min',
     } in basic['annotations']
+
+
+@pytest.mark.parametrize('data,pointer, result', (
+    ({'$id': 'foo'}, JSONPointer(), True),
+    ({}, JSONPointer(), True),
+    (True, JSONPointer(), True),
+    ({'items': {'$id': 'foo'}}, JSONPointer('/items'), True),
+    ({'items': {}}, JSONPointer('/items'), False),
+    ({'items': True}, JSONPointer('/items'), False),
+))
+def test_is_resource_root(data, pointer, result):
+    s = JSONSchema(
+        data,
+        metaschema_uri=URI('https://json-schema.org/draft/2020-12/schema'),
+    )
+    assert pointer.evaluate(s).is_resource_root() is result
