@@ -140,7 +140,14 @@ class JSONFormat(JSONResource):
         if self.parent_in_format is not None:
             return self.parent_in_format.metadocument_uri
 
-    @property
+    @metadocument_uri.setter
+    def metadocument_uri(self, value: Optional[URI]) -> None:
+        self._metadocument_uri = value
+
+        # TODO: This is overkill, be more granular?
+        self._invalidate_value()
+
+    @cached_property
     def metadocument(self) -> EvaluableJSON:
         """A document describing this document and how to process it.
 
@@ -224,6 +231,8 @@ class JSONFormat(JSONResource):
 
     def _invalidate_path(self) -> None:
         """Causes path-dependent cached attributes to be re-calculated."""
+        super()._invalidate_path()
+
         for attr in (
             'format_parent',
             'parent_in_format',
@@ -234,4 +243,16 @@ class JSONFormat(JSONResource):
             except AttributeError:
                 pass
 
-        super()._invalidate_path()
+    def _invalidate_value(self) -> None:
+        """Causes value-dependent cached attributes to be re-calculated."""
+        super()._invalidate_value()
+
+        for attr in (
+            'format_root',
+            'parent_in_format',
+            'metadocument',
+        ):
+            try:
+                delattr(self, attr)
+            except AttributeError:
+                pass

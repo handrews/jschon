@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from jschon.exceptions import JSONSchemaError
 from jschon.json import JSON, JSONCompatible
-from jschon.resource import JSONResource
+from jschon.jsonformat import JSONFormat
 from jschon.jsonpointer import JSONPointer
 from jschon.uri import URI
 
@@ -22,7 +22,7 @@ __all__ = [
 ]
 
 
-class JSONSchema(JSONResource):
+class JSONSchema(JSONFormat):
     """JSON schema document model."""
 
     def __init__(
@@ -51,8 +51,8 @@ class JSONSchema(JSONResource):
         :param key: the index of the schema within its parent; used internally
             when creating a subschema
         """
-
-        self._metaschema_uri: Optional[URI] = metaschema_uri
+        from jschon.vocabulary import Metaschema
+        self._metadocument_cls = Metaschema
 
         self.keywords: Dict[str, Keyword] = {}
         """A dictionary of the schema's :class:`~jschon.vocabulary.Keyword`
@@ -81,7 +81,10 @@ class JSONSchema(JSONResource):
         self.key: Optional[str] = key
         """The index of the schema within its parent."""
 
+        self.metadocument_uri = metaschema_uri
+
         # See _is_resource_root() for how this is used.
+        # TODO: Is this really needed?
         self._initial_value_has_id = False
 
         if isinstance(value, bool):
@@ -137,6 +140,13 @@ class JSONSchema(JSONResource):
             self.keywords["$id"] = id_kw
             self.data["$id"] = id_kw.json
 
+    def _invalidated_value(self):
+        super()._invalidate_value()
+        try:
+            del self.metaschema
+        except AttributeError:
+            pass
+
     @staticmethod
     def _resolve_dependencies(kwclasses: Dict[str, KeywordClass]) -> Iterator[KeywordClass]:
         dependencies = {
@@ -171,13 +181,6 @@ class JSONSchema(JSONResource):
                     if isinstance(item, JSONSchema):
                         item.resolve_references()
 
-    def validate(self) -> Result:
-        """Validate the schema against its metaschema."""
-        return self.metaschema.evaluate(
-            self,
-            Result(self.metaschema, self, validating_with=self.metaschema),
-        )
-
     def instantiate_mapping(
         self,
         value: Mapping[JSONCompatible],
@@ -193,6 +196,9 @@ class JSONSchema(JSONResource):
             self.keywords[key] = kw
             self.data[key] = kw.json
         return self.data
+
+    def initial_validation_result(self, instance):
+        return Result(self, instance, validating_with=self)
 
     def evaluate(self, instance: JSON, result: Optional[Result] = None) -> Result:
         """Evaluate a JSON document and return the evaluation result.
@@ -300,7 +306,7 @@ class JSONSchema(JSONResource):
     @cached_property
     def metaschema(self) -> Metaschema:
         """The schema's :class:`~jschon.vocabulary.Metaschema`."""
-        if (uri := self.metaschema_uri) is None:
+        if (uri := self.metadocument_uri) is None:
             raise JSONSchemaError("The schema's metaschema URI has not been set")
 
         return self.catalog.get_metaschema(uri)
@@ -312,14 +318,11 @@ class JSONSchema(JSONResource):
         If not defined on this (sub)schema, the metaschema URI
         is determined by the parent schema.
         """
-        if self._metaschema_uri is not None:
-            return self._metaschema_uri
-        if self.parentschema is not None:
-            return self.parentschema.metaschema_uri
+        return self.metadocument_uri
 
     @metaschema_uri.setter
     def metaschema_uri(self, value: Optional[URI]) -> None:
-        self._metaschema_uri = value
+        self.metadocument_uri = value
 
     @property
     def canonical_uri(self) -> Optional[URI]:
