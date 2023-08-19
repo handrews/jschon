@@ -143,6 +143,7 @@ class JSONFormat(JSONResource):
     @metadocument_uri.setter
     def metadocument_uri(self, value: Optional[URI]) -> None:
         self._metadocument_uri = value
+        del self.metadocument
 
     @cached_property
     def metadocument(self) -> EvaluableJSON:
