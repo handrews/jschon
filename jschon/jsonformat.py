@@ -13,11 +13,16 @@ __all__ = [
     'EvaluableJSONResult',
     'JSONFormat',
     'JSONFormatError',
+    'MetadocumentClassRequiredError',
 ]
 
 
 class JSONFormatError(JschonError):
     """Error originating from the jschon.jsonformat module."""
+
+
+class MetadocumentClassRequiredError(JSONFormatError):
+    """Raised when no metadocuemnt class can be determined."""
 
 
 @runtime_checkable
@@ -127,7 +132,7 @@ class JSONFormat(JSONResource):
                 self._metadocument_cls = self._default_metadocument_cls
 
         if self._metadocument_cls is None:
-            raise ValueError(
+            raise MetadocumentClassRequiredError(
                 "The metadocument_cls parameter is required for this "
                 "JSONFormat (sub)class.",
             )

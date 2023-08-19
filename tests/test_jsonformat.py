@@ -2,7 +2,11 @@ import pytest
 
 from jschon import URI
 from jschon.jsonformat import (
-    JSONFormat, JSONFormatError, EvaluableJSON, EvaluableJSONResult
+    EvaluableJSONResult,
+    JSONFormat,
+    JSONFormatError,
+    EvaluableJSON,
+    MetadocumentClassRequiredError,
 )
 
 
@@ -40,6 +44,14 @@ class Evaluator(JSONFormat, EvaluableJSON):
         self._result = result
 
 
+class Evaluator2(Evaluator):
+    pass
+
+
+class JSONFormat2(JSONFormat):
+    _default_metadocument_cls = Evaluator2
+
+
 def test_default_constructor():
     f = JSONFormat({"a": []}, metadocument_cls=Evaluator)
 
@@ -54,10 +66,12 @@ def test_default_constructor():
     assert f.format_parent is None
     assert f.parent_in_format is None
     assert f.is_format_root() is True
+    assert f.format_root is f
 
     assert f['a'].format_parent is f
     assert f['a'].parent_in_format is f
     assert f['a'].is_format_root() is False
+    assert f['a'].format_root is f
 
 
 def test_with_metadocument_uri(catalog):
@@ -79,19 +93,36 @@ def test_with_metadocument_uri(catalog):
 
 
 def test_itemclass():
-    class Evaluator2(Evaluator):
-        pass
-
-    class JSONFormat2(JSONFormat):
-        _default_metadocument_cls = Evaluator2
-
     f = JSONFormat(
         {"a": []},
         itemclass=JSONFormat2,
         metadocument_cls=Evaluator,
     )
-    assert type(f) is JSONFormat
-    assert f._metadocument_cls is Evaluator
 
-    assert type(f['a']) is JSONFormat2
-    assert f['a']._metadocument_cls is Evaluator2
+    a = f['a']
+    assert type(a) is JSONFormat2
+    assert a._metadocument_cls is Evaluator2
+    assert a.format_parent is None
+    assert a.parent_in_format is None
+    assert a.is_format_root() is True
+    assert a.format_root is a
+
+
+def test_subclass_in_format():
+    f = JSONFormat2(
+        {"a": []},
+        itemclass=JSONFormat,
+    )
+
+    a = f['a']
+    assert type(a) is JSONFormat
+    assert a._metadocument_cls is Evaluator2
+    assert a.format_parent is f
+    assert a.parent_in_format is f
+    assert a.is_format_root() is False
+    assert a.format_root is f
+
+
+def test_format_cls_required():
+    with pytest.raises(MetadocumentClassRequiredError):
+        JSONFormat({})
