@@ -54,8 +54,6 @@ class JSONSchema(JSONFormat):
         from jschon.vocabulary import Metaschema
         self._metadocument_cls = Metaschema
 
-        self.metadocument_uri = metaschema_uri
-
         self.keywords: Dict[str, Keyword] = {}
         """A dictionary of the schema's :class:`~jschon.vocabulary.Keyword`
         objects, indexed by keyword name."""
@@ -83,7 +81,10 @@ class JSONSchema(JSONFormat):
         self.key: Optional[str] = key
         """The index of the schema within its parent."""
 
+        self.metadocument_uri = metaschema_uri
+
         # See _is_resource_root() for how this is used.
+        # TODO: Is this really needed?
         self._initial_value_has_id = False
 
         if isinstance(value, bool):
@@ -147,6 +148,13 @@ class JSONSchema(JSONFormat):
             id_kw = IdKeyword(self, value["$id"])
             self.keywords["$id"] = id_kw
             self.data["$id"] = id_kw.json
+
+    def _invalidated_value(self):
+        super()._invalidate_value()
+        try:
+            del self.metaschema
+        except AttributeError:
+            pass
 
     @staticmethod
     def _resolve_dependencies(kwclasses: Dict[str, KeywordClass]) -> Iterator[KeywordClass]:

@@ -144,6 +144,9 @@ class JSONFormat(JSONResource):
     def metadocument_uri(self, value: Optional[URI]) -> None:
         self._metadocument_uri = value
 
+        # TODO: This is overkill, be more granular?
+        self._invalidate_value()
+
     @cached_property
     def metadocument(self) -> EvaluableJSON:
         """A document describing this document and how to process it.
