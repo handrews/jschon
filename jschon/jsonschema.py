@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from jschon.exceptions import JSONSchemaError
 from jschon.json import JSON, JSONCompatible
-from jschon.resource import JSONResource
+from jschon.jsonformat import JSONFormat
 from jschon.jsonpointer import JSONPointer
 from jschon.uri import URI
 
@@ -22,7 +22,7 @@ __all__ = [
 ]
 
 
-class JSONSchema(JSONResource):
+class JSONSchema(JSONFormat):
     """JSON schema document model."""
 
     def __init__(
@@ -51,6 +51,8 @@ class JSONSchema(JSONResource):
         :param key: the index of the schema within its parent; used internally
             when creating a subschema
         """
+        from jschon.vocabulary import Metaschema
+        self._metadocument_cls = Metaschema
 
         self._metaschema_uri: Optional[URI] = metaschema_uri
 
