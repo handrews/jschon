@@ -30,16 +30,10 @@ class EvaluableJSON(Protocol):
     """Protocol for documents that can evaluate another document.
 
     """
-    def new_result(
+    def initial_validation_result(
         self,
         instance: JSON,
     ) -> EvaluableJSONresult:
-        """Return a new :class:`EvaluableJSONResult` of the correct type.
-
-        This result should, if appropriate for the :class:`EvaluableJSONResult`
-        implementation, indicate that the evaluation is being carried
-        out by this :class:`EvaluableJSON` instances.
-        """
         ...
 
     def evaluate(
@@ -225,10 +219,7 @@ class JSONFormat(JSONResource):
         """Validate the document against its metadocument."""
         return self.metadocument.evaluate(
             self,
-            self.metadocument.new_result(
-                self,
-                validating_with=self.metadocument,
-            )
+            self.metadocument.initial_validation_result(self)
         )
 
     def invalidate_format_tree():

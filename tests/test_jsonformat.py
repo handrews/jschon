@@ -52,6 +52,18 @@ class JSONFormat2(JSONFormat):
     _default_metadocument_cls = Evaluator2
 
 
+@pytest.fixture
+def metadocument():
+    md_uri = URI('https://example.org/meta')
+    md = Evaluator({}, uri=md_uri, cacheid='__meta__')
+    return md
+
+
+def test_format_cls_required():
+    with pytest.raises(MetadocumentClassRequiredError):
+        JSONFormat({})
+
+
 def test_default_constructor():
     f = JSONFormat({"a": []}, metadocument_cls=Evaluator)
 
@@ -74,22 +86,17 @@ def test_default_constructor():
     assert f['a'].format_root is f
 
 
-def test_with_metadocument_uri(catalog):
-    md_uri = URI('https://example.org/meta')
+def test_with_metadocument(metadocument):
     f = JSONFormat(
         {"a": []},
-        metadocument_uri=md_uri,
+        metadocument_uri=metadocument.uri,
         metadocument_cls=Evaluator,
     )
 
-    md = Evaluator({}, uri=md_uri, cacheid='__meta__')
-    assert md.uri == md_uri
-    assert md_uri in catalog._schema_cache['__meta__']
-
     for node in f, f['a']:
         assert type(node) is JSONFormat
-        assert node.metadocument_uri is md_uri
-        assert node.metadocument is md
+        assert node.metadocument_uri is metadocument.uri
+        assert node.metadocument is metadocument
 
 
 def test_itemclass():
@@ -123,6 +130,13 @@ def test_subclass_in_format():
     assert a.format_root is f
 
 
-def test_format_cls_required():
-    with pytest.raises(MetadocumentClassRequiredError):
-        JSONFormat({})
+def test_validate(metadocument):
+    f = JSONFormat(
+        {},
+        metadocument_uri=metadocument.uri,
+        metadocument_cls=type(metadocument),
+    )
+    r = f.validate()
+    assert r.instance == f
+    assert r.evaluator == metadocument
+    assert r.validating_with == metadocument 
