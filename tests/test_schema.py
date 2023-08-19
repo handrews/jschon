@@ -338,3 +338,12 @@ def test_recursive_schema_extension_2020_12():
     tree_json = JSON(tree_instance_2020_12)
     assert tree_schema.evaluate(tree_json).valid is True
     assert strict_tree_schema.evaluate(tree_json).valid is False
+
+
+def test_set_id():
+    js = JSONSchema(tree_2020_12)
+    assert js['properties']['children'].resource_rootschema is js
+    js['properties']['children']['$id'] = 'foo'
+    assert js['properties']['children'].resource_rootschema is \
+        js['properties']['children']
+
