@@ -130,8 +130,8 @@ class JSONSchema(JSONFormat):
                 self.keywords[key] = kw
                 self.data[key] = kw.json
 
-            if self.parent is None and self._auto_resolve_references:
-                self.resolve_references()
+        if self.parent is None and self._auto_resolve_references:
+            self.resolve_references()
 
     def _bootstrap(self, value: Mapping[str, JSONCompatible]) -> None:
         from jschon.vocabulary.core import SchemaKeyword, VocabularyKeyword
