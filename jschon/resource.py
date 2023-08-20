@@ -279,6 +279,11 @@ class JSONResource(JSON):
         itemclass: Type[JSON] = None,
         **itemkwargs: Any,
     ) -> None:
+
+        # Set here and in pre_recursion_init() to handle both normal
+        # subclasses those that don't invoke their superclass constructor.
+        self._auto_resolve_references: bool = resolve_references
+
         if pre_recursion_args is None:
             pre_recursion_args = {}
 
@@ -686,6 +691,6 @@ class JSONResource(JSON):
         If references are not supported, reference resolution trivially
         succeeds.  This is the default behavior.
         """
-        for child in self.child_resource_nodes():
+        for child in self.child_resource_nodes:
             child.resolve_references()
         self.references_resolved = True
