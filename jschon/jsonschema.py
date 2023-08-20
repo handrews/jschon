@@ -91,10 +91,6 @@ class JSONSchema(JSONFormat):
 
         self.metadocument_uri = metaschema_uri
 
-        # See _is_resource_root() for how this is used.
-        # TODO: Is this really needed?
-        self._initial_value_has_id = False
-
         if isinstance(value, bool):
             self.type = "boolean"
             self.data = value
@@ -286,14 +282,9 @@ class JSONSchema(JSONFormat):
             parent = parent.parent
 
     def is_resource_root(self):
-        try:
-            return "$id" in self.keywords or self.parent is None
-        except AttributeError:
-            # During initialization, we need to know whether we are
-            # a resource root before we are able to fully process the
-            # keywords.  This flag can become out-of-date if the value
-            # is changed after initialization, so only use it as a back-up.
-            return self._initial_value_has_id or self.parent is None
+        return (
+            self.type == 'object' and "$id" in self.data
+        ) or self.parent is None
 
     @cached_property
     def resource_rootschema(self) -> JSONSchema:
