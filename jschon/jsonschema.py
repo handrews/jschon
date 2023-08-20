@@ -211,6 +211,9 @@ class JSONSchema(JSONFormat):
                     yield kwclass
                     break
 
+    def get_subschema_cls(self):
+        return JSONSchema
+
     def initial_validation_result(self, instance):
         return Result(self, instance, validating_with=self)
 
