@@ -691,6 +691,8 @@ class JSONResource(JSON):
         If references are not supported, reference resolution trivially
         succeeds.  This is the default behavior.
         """
-        for child in self.child_resource_nodes:
+        # Avoid locking in the child_resource_nodes cached property
+        # as this method is often called relatively early in initialization.
+        for child in self._find_child_resource_nodes(self):
             child.resolve_references()
         self.references_resolved = True
