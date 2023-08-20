@@ -236,8 +236,7 @@ class JSONSchema(JSONFormat):
         if (
             validating_with is not None and
             isinstance(instance, JSONSchema) and
-            '$id' in instance.keywords and
-            '$schema' in instance.keywords and
+            instance.is_format_root() and
             validating_with != instance.metaschema
         ):
             schema = instance.metaschema
@@ -285,6 +284,12 @@ class JSONSchema(JSONFormat):
         return (
             self.type == 'object' and "$id" in self.data
         ) or self.parent is None
+
+    def is_format_root(self):
+        return (
+            self.type == 'object' and
+            "$id" in self.data and "$schema" in self.data
+        ) or self.format_parent is None
 
     @cached_property
     def resource_rootschema(self) -> JSONSchema:
