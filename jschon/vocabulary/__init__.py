@@ -178,7 +178,8 @@ class Subschema(SubschemaMixin):
     @classmethod
     def jsonify(cls, parentschema: JSONSchema, key: str, value: JSONCompatible) -> Optional[JSON]:
         if isinstance(value, (bool, Mapping)):
-            return JSONSchema(
+            schema_cls, factory = parentschema.get_schema_factory()
+            return (schema_cls if factory is None else factory)(
                 value,
                 parent=parentschema,
                 key=key,
@@ -194,11 +195,12 @@ class ArrayOfSubschemas(SubschemaMixin):
     @classmethod
     def jsonify(cls, parentschema: JSONSchema, key: str, value: JSONCompatible) -> Optional[JSON]:
         if isinstance(value, Sequence):
+            schema_cls, factory = parentschema.get_schema_factory()
             return JSON(
                 value,
                 parent=parentschema,
                 key=key,
-                itemclass=JSONSchema,
+                itemclass=schema_cls if factory is None else factory,
                 catalog=parentschema.catalog,
                 cacheid=parentschema.cacheid,
             )
@@ -211,11 +213,12 @@ class ObjectOfSubschemas(SubschemaMixin):
     @classmethod
     def jsonify(cls, parentschema: JSONSchema, key: str, value: JSONCompatible) -> Optional[JSON]:
         if isinstance(value, Mapping):
+            schema_cls, factory = parentschema.get_schema_factory()
             return JSON(
                 value,
                 parent=parentschema,
                 key=key,
-                itemclass=JSONSchema,
+                itemclass=schema_cls if factory is None else factory,
                 catalog=parentschema.catalog,
                 cacheid=parentschema.cacheid,
             )

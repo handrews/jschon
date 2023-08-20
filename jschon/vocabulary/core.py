@@ -94,8 +94,13 @@ class RefKeyword(Keyword):
             else:
                 raise JSONSchemaError(f'No base URI against which to resolve the "$ref" value "{uri}"')
 
+        schema_cls, factory = self.parentschema.get_schema_factory()
         self.refschema = self.parentschema.catalog.get_schema(
-            uri, metaschema_uri=self.parentschema.metaschema_uri, cacheid=self.parentschema.cacheid
+            uri,
+            metaschema_uri=self.parentschema.metaschema_uri,
+            cacheid=self.parentschema.cacheid,
+            cls=schema_cls,
+            factory=factory,
         )
 
     def evaluate(self, instance: JSON, result: Result) -> None:
@@ -136,8 +141,13 @@ class DynamicRefKeyword(Keyword):
             else:
                 raise JSONSchemaError(f'No base URI against which to resolve the "$dynamicRef" value "{uri}"')
 
+        schema_cls, factory = self.parentschema.get_schema_factory()
         self.refschema = self.parentschema.catalog.get_schema(
-            uri, metaschema_uri=self.parentschema.metaschema_uri, cacheid=self.parentschema.cacheid
+            uri,
+            metaschema_uri=self.parentschema.metaschema_uri,
+            cacheid=self.parentschema.cacheid,
+            cls=schema_cls,
+            factory=factory,
         )
         if (dynamic_anchor := self.refschema.get("$dynamicAnchor")) and dynamic_anchor.data == self.fragment:
             self.dynamic = True
@@ -154,8 +164,12 @@ class DynamicRefKeyword(Keyword):
                     checked_uris |= {base_uri}
                     target_uri = URI(f"#{self.fragment}").resolve(base_uri)
                     try:
+                        schema_cls, factory = self.parentschema.get_schema_factory()
                         found_schema = self.parentschema.catalog.get_schema(
-                            target_uri, cacheid=self.parentschema.cacheid
+                            target_uri,
+                            cacheid=self.parentschema.cacheid,
+                            cls=schema_cls,
+                            factory=factory,
                         )
                         if (dynamic_anchor := found_schema.get("$dynamicAnchor")) and \
                                 dynamic_anchor.data == self.fragment:

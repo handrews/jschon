@@ -401,6 +401,7 @@ class Catalog:
         metadocument_uri: URI = None,
         cacheid: Hashable = 'default',
         cls: Union[Type[JSONResource], Type[JSONSchema]] = JSONResource,
+        factory: Optional[Callable[[...], JSONResource]] = None,
     ) -> JSONResource:
         """Get a (sub)resource identified by `uri` from a cache, or
         load it from a :class:`Source` if not already cached.
@@ -424,6 +425,8 @@ class Catalog:
 
         resource = None
         base_uri = uri.copy(fragment=False)
+        if factory is None:
+            factory = cls
 
         if uri.fragment is not None:
             try:
@@ -436,7 +439,7 @@ class Catalog:
             kwargs = {}
             if issubclass(cls, JSONSchema):
                 kwargs['metaschema_uri'] = metadocument_uri
-            resource = cls(
+            resource = factory(
                 doc,
                 catalog=self,
                 cacheid=cacheid,
@@ -458,7 +461,8 @@ class Catalog:
 
         if not isinstance(resource, cls):
             raise CatalogError(
-                f"The object referenced by {uri} is not an instance of {cls.__name__}",
+                f"The object referenced by {uri} is not an instance of {cls.__name__}; "
+                f"it is an instance of {type(resource).__name__}",
             )
 
         return resource
@@ -469,6 +473,8 @@ class Catalog:
         *,
         metaschema_uri: URI = None,
         cacheid: Hashable = 'default',
+        cls: Type[JSONSchema] = JSONSchema,
+        factory: Optional[Callable[[...], JSONSchema]] = None,
     ) -> JSONSchema:
         """Get a (sub)schema identified by `uri` from a cache, or
         load it from disk if not already cached.
@@ -484,7 +490,8 @@ class Catalog:
             uri,
             metadocument_uri=metaschema_uri,
             cacheid=cacheid,
-            cls=JSONSchema,
+            cls=cls,
+            factory=factory,
         )
 
     def resolve_references(self, cacheid: Hashable = 'default') -> None:
