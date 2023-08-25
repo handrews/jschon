@@ -1,10 +1,23 @@
-Welcome to jschon!
-==================
+Welcome to the **experimental** jschon branch for OpenAPI support!
+==================================================================
 
 |tests| |codecov| |pypi| |python| |docs| |license|
 
 jschon is a pythonic and extensible implementation of the
 `JSON Schema <https://json-schema.org/>`_ specification.
+
+`jschon <https://jschon.readthedocs.io/en/latest/reference/jsonschema.html>`_
+was created and is maintained by `Mark Jacobson <https://github.com/marksparkza>`_.
+This experimental fork arises from the
+`extensibility discussion <https://github.com/marksparkza/jschon/discussions/108>`_
+at the jschon repository, and is being developed and proposed by JSON Schema
+and OpenAPI specification contributor `Henry Andrews <https://github.com/handrews>`_
+to support the `OASComply <https://github.com/OAI/oascomply>`_ project.
+
+Please check the jschon extensibility discussion for the status of whether and
+in what form these changes will be incorporated into jschon proper.
+Unless and until that occurs, please raise issues with this fork as
+`OASComply issues <https://github.com/OAI/oascomply/issues>`_.
 
 Features
 --------

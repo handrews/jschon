@@ -2,7 +2,7 @@ from datetime import datetime
 
 import jschon
 
-project = 'jschon'
+project = 'jschon (experimental fork for oascomply)'
 author = 'Mark Jacobson'
 copyright = f'{datetime.now().year}, {author}'
 release = jschon.__version__
