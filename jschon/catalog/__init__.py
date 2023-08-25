@@ -401,6 +401,7 @@ class Catalog:
         metadocument_uri: URI = None,
         cacheid: Hashable = 'default',
         cls: Union[Type[JSONResource], Type[JSONSchema]] = JSONResource,
+        factory: Optional[Callable[[...], JSONResource]] = None,
     ) -> JSONResource:
         """Get a (sub)resource identified by `uri` from a cache, or
         load it from a :class:`Source` if not already cached.
@@ -424,6 +425,8 @@ class Catalog:
 
         resource = None
         base_uri = uri.copy(fragment=False)
+        if factory is None:
+            factory = cls
 
         if uri.fragment is not None:
             try:
@@ -436,7 +439,7 @@ class Catalog:
             kwargs = {}
             if issubclass(cls, JSONSchema):
                 kwargs['metaschema_uri'] = metadocument_uri
-            resource = cls(
+            resource = factory(
                 doc,
                 catalog=self,
                 cacheid=cacheid,
