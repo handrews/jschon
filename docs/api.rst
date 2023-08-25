@@ -10,12 +10,13 @@ Catalog
 * :class:`~jschon.catalog.Catalog`
 * :class:`~jschon.catalog.LocalSource`
 * :class:`~jschon.catalog.RemoteSource`
-* :class:`~jschon.resource.JSONResource`
 
 JSON
 ^^^^
 * :class:`~jschon.json.JSON`
 * :class:`~jschon.json.JSONCompatible`
+* :class:`~jschon.resource.JSONResource`
+* :class:`~jschon.jsonformat.JSONFormat`
 
 JSON Patch
 ^^^^^^^^^^
