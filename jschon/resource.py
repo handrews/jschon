@@ -397,8 +397,7 @@ class JSONResource(JSON):
         self._additional_uris: FrozenSet[URI] = frozenset()
 
         if isinstance(catalog, str):
-            from jschon.catalog import Catalog
-            catalog = Catalog.get_catalog(catalog)
+            catalog = self._get_catalog(catalog)
 
         self.catalog: Catalog = catalog
         self.cacheid: Hashable = cacheid
@@ -408,6 +407,10 @@ class JSONResource(JSON):
         self.additional_uris |= {
             au.resolve(self._base_uri) for au in additional_uris
         }
+
+    def _get_catalog(self, catalog_str: str):
+        from jschon.catalog import Catalog
+        return Catalog.get_catalog(catalog_str)
 
     def _set_uri(
         self,
