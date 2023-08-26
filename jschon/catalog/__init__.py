@@ -402,6 +402,7 @@ class Catalog:
         cacheid: Hashable = 'default',
         cls: Union[Type[JSONResource], Type[JSONSchema]] = JSONResource,
         factory: Optional[Callable[[...], JSONResource]] = None,
+        fragment: bool = False,
     ) -> JSONResource:
         """Get a (sub)resource identified by `uri` from a cache, or
         load it from a :class:`Source` if not already cached.
@@ -414,6 +415,12 @@ class Catalog:
         :param cacheid: schema cache identifier
         :param cls: The :class:`jschon.resource.JSONResource` subclass to
             instantiate
+        :param factory: A callable that will instantiate the correct subclass
+            in place of invoking the ``cls`` parameter directly; the result
+            will be type-checked against ``cls``
+        :param fragment: If true, a ``request_uri`` parameter will be passed
+            to the ``factory`` or ``cls`` invocation which will include
+            the requested URI with its fragment, if any
         :raise CatalogError: if a schema cannot be found for `uri`, or if the
             object referenced by `uri` does not match the type in the
             ``cls`` parameter
@@ -439,6 +446,8 @@ class Catalog:
             kwargs = {}
             if issubclass(cls, JSONSchema):
                 kwargs['metaschema_uri'] = metadocument_uri
+            if fragment:
+                kwargs['request_uri'] = uri
             resource = factory(
                 doc,
                 catalog=self,
