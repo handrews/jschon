@@ -205,7 +205,7 @@ class Catalog:
         meta_cls: Type[EvaluableJSON] = Metaschema,
         **meta_kwargs: Any,
     ) -> EvaluableJSON:
-        metadocument_doc = self.load_json(uri)
+        metadocument_doc = self.load_json(uri.copy(fragment=None))
         metadocument = meta_cls(
             self,
             metadocument_doc,
