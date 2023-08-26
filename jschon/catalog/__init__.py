@@ -461,7 +461,8 @@ class Catalog:
 
         if not isinstance(resource, cls):
             raise CatalogError(
-                f"The object referenced by {uri} is not an instance of {cls.__name__}",
+                f"The object referenced by {uri} is not an instance of {cls.__name__}; "
+                f"it is an instance of {type(resource).__name__}",
             )
 
         return resource
