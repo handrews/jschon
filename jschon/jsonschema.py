@@ -36,6 +36,7 @@ class JSONSchema(JSONFormat):
             parent: JSON = None,
             key: str = None,
             resolve_references: bool = True,
+            **_ignored,
     ):
         """Initialize a :class:`JSONSchema` instance from the given
         schema-compatible `value`.
