@@ -472,6 +472,7 @@ class Catalog:
         *,
         metaschema_uri: URI = None,
         cacheid: Hashable = 'default',
+        cls: Type[JSONSchema] = JSONSchema,
     ) -> JSONSchema:
         """Get a (sub)schema identified by `uri` from a cache, or
         load it from disk if not already cached.
@@ -487,7 +488,7 @@ class Catalog:
             uri,
             metadocument_uri=metaschema_uri,
             cacheid=cacheid,
-            cls=JSONSchema,
+            cls=cls,
         )
 
     def resolve_references(self, cacheid: Hashable = 'default') -> None:
