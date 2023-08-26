@@ -24,11 +24,13 @@ class RecursiveRefKeyword_2019_09(Keyword):
 
     def resolve(self) -> None:
         if (base_uri := self.parentschema.base_uri) is not None:
+            schema_cls, factory = self.parentschema.get_schema_factory()
             self.refschema = self.parentschema.catalog.get_schema(
                 base_uri,
                 metaschema_uri=self.parentschema.metaschema_uri,
                 cacheid=self.parentschema.cacheid,
-                cls=self.parentschema.get_subschema_cls(),
+                cls=schema_cls,
+                factory=factory,
             )
         else:
             raise JSONSchemaError(f'No base URI against which to resolve "$recursiveRef"')

@@ -202,8 +202,11 @@ class JSONSchema(JSONFormat):
                     yield kwclass
                     break
 
-    def get_subschema_cls(self):
-        return JSONSchema
+    def get_schema_factory(self) -> Tuple[
+        Type[JSONSchema],
+        Optional[Callable[[...], JSONSchema]]
+    ]:
+        return JSONSchema, None
 
     def instantiate_mapping(
         self,
