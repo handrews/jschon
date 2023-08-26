@@ -36,6 +36,7 @@ class JSONSchema(JSONFormat):
             parent: JSON = None,
             key: str = None,
             resolve_references: bool = True,
+            **_ignored,
     ):
         """Initialize a :class:`JSONSchema` instance from the given
         schema-compatible `value`.
@@ -248,12 +249,12 @@ class JSONSchema(JSONFormat):
         validating_with = result.validating_with
         if (
             validating_with is not None and
-            isinstance(instance, JSONSchema) and
+            isinstance(instance, JSONFormat) and
             instance.is_format_root() and
-            validating_with != instance.metaschema
+            validating_with != instance.metadocument
         ):
-            schema = instance.metaschema
-            validating_with = instance.metaschema
+            schema = instance.metadocument
+            validating_with = instance.metadocument
 
         if schema.data is True:
             pass

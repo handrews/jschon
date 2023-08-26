@@ -205,13 +205,19 @@ class Catalog:
         meta_cls: Type[EvaluableJSON] = Metaschema,
         **meta_kwargs: Any,
     ) -> EvaluableJSON:
-        metadocument_doc = self.load_json(uri)
+        metadocument_doc = self.load_json(uri.copy(fragment=None))
+        # TODO: fix hack:
         metadocument = meta_cls(
             self,
             metadocument_doc,
             *meta_args,
             **meta_kwargs,
             uri=uri,
+        ) if issubclass(meta_cls, Metaschema) else meta_cls(
+            metadocument_doc,
+            catalog=self,
+            uri=uri,
+            **meta_kwargs,
         )
         if not self._auto_resolve_references:
             self.resolve_references(cacheid='__meta__')
@@ -220,6 +226,8 @@ class Catalog:
                 "The metadocument is invalid against its own metadocument "
                 f'"{metadocument_doc["$schema"]}"'
             )
+        if uri.fragment:
+            return self.get_resource(uri, cacheid='__meta__', cls=meta_cls)
         return metadocument
 
     def create_metaschema(
@@ -414,6 +422,9 @@ class Catalog:
         :param cacheid: schema cache identifier
         :param cls: The :class:`jschon.resource.JSONResource` subclass to
             instantiate
+        :param factory: A callable that will instantiate the correct subclass
+            in place of invoking the ``cls`` parameter directly; the result
+            will be type-checked against ``cls``
         :raise CatalogError: if a schema cannot be found for `uri`, or if the
             object referenced by `uri` does not match the type in the
             ``cls`` parameter
@@ -439,6 +450,7 @@ class Catalog:
             kwargs = {}
             if issubclass(cls, JSONSchema):
                 kwargs['metaschema_uri'] = metadocument_uri
+            kwargs['request_uri'] = uri
             resource = factory(
                 doc,
                 catalog=self,
