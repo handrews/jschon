@@ -408,7 +408,9 @@ class JSONResource(JSON):
             au.resolve(self._base_uri) for au in additional_uris
         }
 
-    def _get_catalog(self, catalog_str: str):
+    def _get_catalog(self, catalog_str: str) -> Catalog:
+        """Get a catalog by name from the correct Catalog subclass."""
+
         from jschon.catalog import Catalog
         return Catalog.get_catalog(catalog_str)
 
