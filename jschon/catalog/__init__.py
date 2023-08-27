@@ -219,8 +219,6 @@ class Catalog:
             uri=uri,
             **meta_kwargs,
         )
-        if not self._auto_resolve_references:
-            self.resolve_references(cacheid='__meta__')
         if not metadocument.validate().valid:
             raise CatalogError(
                 "The metadocument is invalid against its own metadocument "

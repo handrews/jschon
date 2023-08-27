@@ -231,6 +231,9 @@ class JSONFormat(JSONResource):
 
     def validate(self) -> EvaluableJSONResult:
         """Validate the document against its metadocument."""
+        # Validation happens automatically in some circumstances,
+        # so ensure that references are evaluated first.
+        self.metadocument.format_root.resolve_references()
         return self.metadocument.evaluate(
             self,
             self.metadocument.initial_validation_result(self)
