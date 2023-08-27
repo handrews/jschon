@@ -224,6 +224,8 @@ class Catalog:
                 "The metadocument is invalid against its own metadocument "
                 f'"{metadocument_doc["$schema"]}"'
             )
+        if uri.fragment:
+            return self.get_resource(uri, cacheid='__meta__', cls=meta_cls)
         return metadocument
 
     def create_metaschema(
