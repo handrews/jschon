@@ -135,14 +135,11 @@ class JSONSchema(JSONFormat):
                 self.data[key] = kw.json
 
         if "$id" in value:
-            if str(self.metaschema.core_vocabulary.uri) in (
-                "https://json-schema.org/draft/2019-09/vocab/core",
-                "https://json-schema.org/draft/2020-12/vocab/core",
-            ):
-                from jschon.vocabulary.core import IdKeyword
-            else:
-                from jschon.vocabulary.future import IdKeyword_Next as IdKeyword
-
+            # Using the 2019-09 / 2020-12 "$id" keyword still allows
+            # all valid draft-next values, and avoids deadlocks from
+            # trying to access the metaschema to dtermine the core vocab.
+            # TODO: Figure out something better for draft-next
+            from jschon.vocabulary.core import IdKeyword
             id_kw = IdKeyword(self, value["$id"])
             self.keywords["$id"] = id_kw
             self.data["$id"] = id_kw.json
@@ -238,9 +235,14 @@ class JSONSchema(JSONFormat):
             by default references are resolved during construction
         """
         if self.references_resolved is False:
-            raise JSONSchemaError(
-                'resolve_references() must be called before evaluate()'
-            )
+            if result is not None and result.validating_with:
+                # Validation happens automatically in some cases,
+                # so resolve references as needed.
+                self.resolve_references()
+            else:
+                raise JSONSchemaError(
+                    'resolve_references() must be called before evaluate()'
+                )
 
         schema = self
         if result is None:
