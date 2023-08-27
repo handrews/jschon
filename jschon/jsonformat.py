@@ -132,6 +132,10 @@ class JSONFormat(JSONResource):
             )
         super().pre_recursion_init(*args, **kwargs)
 
+    def get_metadocument_cls(self) -> EvaluableJSON:
+        from jschon.vocabulary import Metaschema
+        return Metaschema
+
     @property
     def metadocument_uri(self) -> Optional[URI]:
         """The URI of a document that describes this document."""
@@ -161,7 +165,10 @@ class JSONFormat(JSONResource):
             raise JSONFormatError(
                 "The format's metadocument URI has not been set",
             )
-        return self.catalog.get_metadocument(uri)
+        return self.catalog.get_metadocument(
+            uri,
+            meta_cls=self.get_metadocument_cls(),
+        )
 
     @cached_property
     def format_parent(self) -> Optional[JSONFormat]:
