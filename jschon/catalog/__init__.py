@@ -206,12 +206,18 @@ class Catalog:
         **meta_kwargs: Any,
     ) -> EvaluableJSON:
         metadocument_doc = self.load_json(uri.copy(fragment=None))
+        # TODO: fix hack:
         metadocument = meta_cls(
             self,
             metadocument_doc,
             *meta_args,
             **meta_kwargs,
             uri=uri,
+        ) if issubclass(meta_cls, Metaschema) else meta_cls(
+            metadocument_doc,
+            catalog=self,
+            uri=uri,
+            **meta_kwargs,
         )
         if not metadocument.validate().valid:
             raise CatalogError(
