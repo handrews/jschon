@@ -294,6 +294,7 @@ class JSONResource(JSON):
             'initial_base_uri': initial_base_uri,
             'default_uri_factory': default_uri_factory,
             'additional_uris': additional_uris,
+            'resolve_references': resolve_references,
         }
         local_pre_recursion_args.update(pre_recursion_args)
 
