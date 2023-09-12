@@ -130,6 +130,14 @@ class JSON(MutableSequence['JSON'], MutableMapping[str, 'JSON']):
         self.itemkwargs: Dict[str, Any] = itemkwargs
         """Keyword arguments to the :attr:`itemclass` constructor."""
 
+        # TODO: Is this the right set of args?  Should there be another way to
+        #       push these args through?
+        for arg, default  in (('catalog', 'catalog'), ('cacheid', 'default')):
+            self.itemkwargs.setdefault(
+                arg,
+                pre_recursion_args.get(arg, default),
+            )
+
         # During recursive construction, the data attribute is by definition
         # incompletely initialized.  Setting it to the value up front is
         # correct for scalar types and allows setting the type attribute and
